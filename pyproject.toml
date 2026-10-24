@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-local"
+version = "0.2.0"
+description = "A fully local, voice-first personal assistant: streaming voice, MCP tools, a second brain, screen vision and proactive alerts."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Everything needed for hands-free voice mode.
+voice = [
+    "faster-whisper>=1.0",
+    "piper-tts>=1.2",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24",
+]
+# Optional "Hey Jarvis" wake word.
+wake = [
+    "openwakeword>=0.6",
+]
+# Connect Model Context Protocol servers (files, git, calendar, browser...).
+mcp = [
+    "mcp>=1.2",
+]
+# PDF support for the second brain (text and code work without it).
+brain = [
+    "pypdf>=4.0",
+]
+# Screen vision and the global hotkey.
+vision = [
+    "mss>=9.0",
+    "pillow>=10.0",
+    "pynput>=1.7",
+]
+# Battery, disk, calendar and log watchers.
+proactive = [
+    "psutil>=5.9",
+    "icalendar>=5.0",
+]
+all = [
+    "jarvis-local[voice,wake,mcp,brain,vision,proactive]",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+jarvis = "jarvis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

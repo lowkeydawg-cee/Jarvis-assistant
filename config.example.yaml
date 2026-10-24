@@ -1,0 +1,116 @@
+# Copy this file to config.yaml and adjust. Every value here is optional.
+# Paths below are Windows examples. Forward slashes work fine on Windows.
+
+llm:
+  host: http://localhost:11434     # Ollama server
+  model: llama3.1:8b               # any Ollama model with tool calling support
+  temperature: 0.6
+  history_turns: 12                # how many past exchanges Jarvis remembers
+  timeout: 300                     # seconds to wait for a reply; raise on slow laptops
+
+stt:
+  model: base.en                   # tiny.en, base.en, small.en, medium.en, large-v3
+  device: auto                     # auto, cpu, cuda
+  compute_type: int8               # int8 is fast on CPU, float16 on GPU
+  language: en
+
+tts:
+  # Path to a Piper voice (.onnx with its .onnx.json next to it).
+  voice: voices/en_GB-alan-medium.onnx
+
+audio:
+  sample_rate: 16000
+  silence_threshold: 0.012         # only used if the Silero model can't load
+  silence_seconds: 1.0             # stop recording after this much quiet
+  max_record_seconds: 15
+
+voice:
+  barge_in: false                  # interrupt Jarvis by talking. Use headphones, or it hears itself.
+  barge_in_min_ms: 300             # how long you must talk before it stops
+  vad_threshold: 0.5               # Silero speech probability, 0 to 1
+
+wake_word:
+  enabled: false                   # requires: pip install -e ".[wake]"
+  model: hey_jarvis
+  threshold: 0.5
+
+# Second brain: your notes, docs and code, searchable by meaning.
+# First run: ollama pull nomic-embed-text, then jarvis --index
+brain:
+  enabled: true
+  folders:
+    - C:/Users/SAINT/Documents/Notes
+    - C:/Users/SAINT/code
+  db: ~/.jarvis/brain.sqlite
+  embed_model: nomic-embed-text
+  top_k: 4
+  reindex_on_start: true           # picks up changed files in the background
+
+# Screen vision. First run: ollama pull qwen2.5vl:7b  (or llava:7b on smaller GPUs)
+vision:
+  enabled: true
+  model: qwen2.5vl:7b
+  hotkey: "<ctrl>+<alt>+j"         # press anywhere to have Jarvis look at your screen
+  max_width: 1600
+  monitor: 1
+
+# Model Context Protocol servers. Each one plugs a whole app into Jarvis.
+# They need Node.js (npx) or uv (uvx) installed. Remove any you don't want.
+mcp:
+  servers:
+    files:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/SAINT/Documents"]
+      confirm: false               # reading files is safe, so no spoken confirmation
+    git:
+      command: uvx
+      args: ["mcp-server-git", "--repository", "C:/Users/SAINT/code/jarvis"]
+      confirm: true                # ask before every git action
+      # allow_tools: [git_status, git_log, git_diff]   # limit what the model can see
+
+# Proactive mode: background checks that speak up when something matters.
+proactive:
+  enabled: true
+  quiet_hours: [22, 7]             # silent from 10pm to 7am
+  briefing_at: "08:30"             # morning briefing, once a day
+  battery: true
+  battery_low_percent: 20
+  disk: true
+  disk_min_free_gb: 10
+  # Export or sync your calendar to a .ics file (Outlook and Google both can).
+  calendar_ics: ""
+  meeting_lead_minutes: 10
+  git_repos:
+    - C:/Users/SAINT/code/jarvis
+  logs:                            # tail build or test logs and report failures
+    # - path: C:/Users/SAINT/code/myapp/build.log
+    #   name: the build
+
+tools:
+  enabled: true
+  confirm_commands: true           # always ask before running a shell command
+  command_timeout: 20
+  # Commands that may run. Anything else is refused outright.
+  allowed_commands:
+    - ls
+    - dir
+    - pwd
+    - whoami
+    - date
+    - uptime
+    - df
+    - free
+    - git
+    - python
+    - python3
+    - pip
+    - node
+    - npm
+    - ping
+    - echo
+    - cat
+    - type
+    - hostname
+    - systeminfo
+    - sw_vers
+    - uname
