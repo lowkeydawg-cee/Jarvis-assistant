@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-local"
-version = "0.3.1"
+version = "0.4.0"
 description = "A voice-first personal assistant with a hybrid cloud and local brain, a browser app, MCP tools, a second brain, screen vision and proactive alerts."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.31",
     "pyyaml>=6.0",
     "numpy>=1.24",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,14 @@ voice = [
     "piper-tts>=1.2",
     "sounddevice>=0.4.6",
     "numpy>=1.24",
+]
+# A far more natural voice (tts.engine: kokoro). Then: python scripts/download_kokoro.py
+kokoro = [
+    "kokoro-onnx>=0.4",
+]
+# Recognise the owner's voice in the browser app. Then: python scripts/download_speaker_model.py
+voiceid = [
+    "sherpa-onnx>=1.10",
 ]
 # Optional "Hey Jarvis" wake word.
 wake = [

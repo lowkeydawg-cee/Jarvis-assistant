@@ -25,14 +25,17 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Feature | What it does | Built with |
 |---|---|---|
 | Hybrid brain | Cloud model first for speed, local Ollama as fallback and for private questions. Embeddings and vision always stay local. | Any OpenAI-compatible API (Groq by default), Ollama |
-| Instant answers | Time, date, disk, battery and "what can you do" are answered straight from code in milliseconds, with no model call, even offline. | A small anchored-pattern router |
-| Browser app | Orb UI with push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
+| Command center | A side panel in the browser app with live processor, memory, disk and battery, plus a health check that says what's broken and the exact fix. `jarvis --doctor` prints the same check in the terminal. | psutil, Python standard library |
+| Browser app | Push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
 | Streaming voice | Speaks the first sentence while the model is still writing the rest. Optional barge-in lets you interrupt. | Ollama streaming, Piper, Silero VAD |
 | MCP agent | Connects to any Model Context Protocol server (files, git, calendar, browser) and exposes its tools to the model. | `mcp` Python SDK |
 | Second brain | Indexes your notes, PDFs and code locally and answers questions from them, citing the file. | Ollama embeddings, SQLite, NumPy |
 | Screen vision | A hotkey or "look at my screen" sends a screenshot to a local vision model. | mss, Qwen2.5-VL or LLaVA |
 | Proactive mode | Battery, disk, meeting and build-log watchers, plus a daily briefing, with quiet hours. | psutil, icalendar |
 | Safe actions | Allowlisted shell commands with spoken confirmation, and per-server confirmation for MCP tools. | Pure-Python policy, fully tested |
+| Reminders and schedule | "Remind me to call mum at 5", "every weekday at 8", "what's on my schedule today", snooze. Speaks up and pops a desktop notification when one is due, and catches up on ones missed while it was off. | Own time parser, JSON store, no model needed |
+| Memory | "Remember that my standup is at 10:30." Facts persist across restarts and are given to the model in every conversation. | JSON store |
+| Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
 
@@ -102,7 +105,6 @@ flowchart LR
 jarvis/
   cli.py          entry point; wires optional features together
   cloud.py        hybrid brain: OpenAI-compatible streaming client and the local fallback router
-  router.py       instant answers that skip the model
   server.py       web mode: local HTTP server, event stream, confirmations
   webui/          the browser app (one HTML file, no build step)
   assistant.py    conversation loop, tool-call loop, inbox
@@ -120,7 +122,7 @@ jarvis/
 scripts/
   download_voice.py     fetches a Piper voice
   install_startup.ps1   start Jarvis when you sign in to Windows
-tests/                  54 tests, no models, mic or API key needed
+tests/                  40 tests, no models, mic or API key needed
 ```
 
 ## Setup
@@ -185,6 +187,8 @@ jarvis --briefing          # get the daily briefing right away
 jarvis --text              # type instead of talk, handy for testing
 jarvis --web               # the browser app
 jarvis --local             # never use the cloud model
+jarvis --doctor            # health check with a fix for every problem
+jarvis --mic-test          # check what Jarvis hears: levels, speech detection, transcript
 ```
 
 To have it start when you sign in to Windows:
@@ -221,16 +225,29 @@ pytest
 
 The tests cover the command policy, sentence streaming and code-block skipping, the speaker's interrupt handling, Silero VAD, the full tool-call loop, the inbox and hotkey flow, incremental indexing and semantic search, screenshot downscaling, every watcher, quiet hours, and a real MCP server started over stdio. None of them need Ollama, a mic, or downloaded models.
 
+## Running well on a modest laptop
+
+Measured on an 8 GB laptop with Intel UHD 620 graphics and no GPU, a 3B model reads about 19 tokens a second, and Jarvis's full prompt is about 1,700 tokens, so every question waited about 90 seconds before the first word. Lite mode attacks that cost directly:
+
+| Change | Setting | Effect on that laptop |
+|---|---|---|
+| Instant answers for common requests | `router.enabled: true` (default) | time, battery, disk, "brief me": under 1 s; notes search: about 3 s |
+| Short prompt, no tools for the local model | `llm.local_tools: false` | open questions: 5 to 25 s instead of about 60 s, and no rambling about tools |
+| Cloud brain with local fallback | `llm.provider: hybrid` and a `GROQ_API_KEY` | open questions in about 1 s ([key setup](docs/SETUP-KEYS.md)) |
+| Cloud speech to text | `stt.provider: cloud` | about 1 s per sentence, better accuracy |
+| Natural voice | `tts.engine: kokoro` | much more lifelike; about 1.5x slower than real time on that CPU, so best on faster machines |
+
+If something isn't working, run `jarvis --doctor` first. It checks Python, Ollama and its models, your cloud key, disk space, notes folders and the microphone, and prints a one-line fix for each problem.
+
+If Jarvis never gets past `[listening]`, run `jarvis --mic-test`. It lists your microphones, shows a live level meter, and tells you in plain words whether the mic is silent, too quiet, or fine.
+
 ## Status
 
-Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback.
+Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback. Version 0.4 adds the command center panel, `jarvis --doctor`, and error messages that say what failed and how to fix it.
 
 ## Ideas for next steps
 
-- Echo cancellation so barge-in works on laptop speakers.
-- A small tray app showing the live transcript and what Jarvis is doing.
-- Hybrid search (keyword plus vector) and reranking for the second brain.
-- Recurring calendar events, and pulling the calendar straight from an MCP server.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what's missing, ranked by urgency.
 
 ## License
 

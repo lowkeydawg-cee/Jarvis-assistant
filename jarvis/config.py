@@ -15,9 +15,13 @@ DEFAULTS: dict[str, Any] = {
         "temperature": 0.6,
         "history_turns": 12,
         "timeout": 300,
+        "keep_alive": "30m",           # how long Ollama keeps the model loaded between questions
         # hybrid: cloud first, local Ollama as fallback. local: Ollama only. cloud: cloud only.
         "provider": "hybrid",
         "private": False,
+        # Send tool descriptions to the local model. Off makes local replies much faster
+        # on CPU-only laptops; instant answers still cover time, briefing and notes.
+        "local_tools": True,
         "cloud": {
             "base_url": "https://api.groq.com/openai/v1",
             "model": "llama-3.3-70b-versatile",
@@ -26,8 +30,23 @@ DEFAULTS: dict[str, Any] = {
             "timeout": 60,
         },
     },
+    # Answer common requests (time, date, battery, disk, briefing, notes) without the model.
     "router": {
         "enabled": True,
+    },
+    # Where reminders, memories and the voiceprint are kept.
+    "data_dir": "~/.jarvis",
+    "user": {
+        "name": "",                    # used until you teach Jarvis your voice (which asks your name)
+    },
+    "reminders": {
+        "enabled": True,
+    },
+    # Recognise the owner's voice in the browser app. Needs: python scripts/download_speaker_model.py
+    "voice_id": {
+        "enabled": True,
+        "model": "voices/speaker-id.onnx",
+        "threshold": 0.6,              # 0 to 1: higher is stricter
     },
     "web": {
         "host": "127.0.0.1",
@@ -35,15 +54,29 @@ DEFAULTS: dict[str, Any] = {
         "open_browser": True,
     },
     "stt": {
+        "provider": "local",           # local, or cloud (Groq Whisper, falls back to local)
+        "cloud": {
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "whisper-large-v3-turbo",
+            "api_key_env": "GROQ_API_KEY",
+            "timeout": 20,
+        },
         "model": "base.en",
         "device": "auto",
         "compute_type": "int8",
         "language": "en",
     },
     "tts": {
+        "engine": "piper",
         "voice": "voices/en_GB-alan-medium.onnx",
+        "kokoro_model": "voices/kokoro-v1.0.int8.onnx",
+        "kokoro_voices": "voices/voices-v1.0.bin",
+        "kokoro_voice": "bm_george",
+        "kokoro_lang": "en-gb",
+        "speed": 1.1,
     },
     "audio": {
+        "device": None,                # None = Windows default; or a number from jarvis --mic-test
         "sample_rate": 16000,
         "silence_threshold": 0.012,
         "silence_seconds": 1.0,

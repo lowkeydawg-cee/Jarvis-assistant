@@ -15,12 +15,16 @@ import threading
 from typing import Callable
 
 from jarvis.persona import system_prompt
+from jarvis.router import Router
 from jarvis.streaming import SentenceStream
 from jarvis.tools import ToolBox
 
 _YES = re.compile(r"\b(yes|yeah|yep|sure|go ahead|do it|ok|okay|affirmative|please)\b", re.I)
 _NO = re.compile(r"\b(no|nope|don't|do not|stop|cancel|never mind|wait)\b", re.I)
 _EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down|that's all)\b", re.I)
+
+
+PERSONAL_ROUTES = {"notes", "briefing", "reminder", "schedule", "cancel", "snooze", "remember", "recall", "forget"}
 
 
 def is_yes(text: str) -> bool:
@@ -46,28 +50,34 @@ class Assistant:
         self.attention = threading.Event()
         self.screen = None  # set by the CLI when vision is enabled
         self.on_error: Callable[[Exception], None] | None = None
-        self.router = None  # QuickRouter, set by the CLI unless router.enabled is false
-        self.last_source = ""  # "instant" when the router answered, else "model"
+        # Instant answers for common requests, so they never wait on the model.
+        self.router = Router() if cfg.get("router", {}).get("enabled", True) else None
+        self.last_source = ""  # where the last reply came from: instant, cloud or local
+        self.memory = None  # jarvis.memory.Memory, set by the CLI
+        self.owner_name = ""
+        self.speaking_as: dict | None = None  # {"owner": bool, "score": float} when the voice was checked
+        self.skills = None  # jarvis.skills.Skills: reminders, schedule and memory
+        self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
 
     # ---- inbox -----------------------------------------------------------
 
-    def post(self, kind: str, text: str = "") -> None:
+    def post(self, kind: str, text: str = "", meta: dict | None = None) -> None:
         """Thread-safe: queue something for Jarvis to handle between turns."""
-        self.inbox.put((kind, text))
+        self.inbox.put((kind, text, meta))
         self.attention.set()
 
     def drain_inbox(self) -> None:
         self.attention.clear()
         while True:
             try:
-                kind, text = self.inbox.get_nowait()
+                kind, text, meta = self.inbox.get_nowait()
             except queue.Empty:
                 return
             try:
                 if kind == "say":
                     self.speaker.say(text)
                 elif kind == "ask":
-                    self.respond(text)
+                    self.respond(text, speaking_as=meta)
                 elif kind == "screen" and self.screen is not None:
                     self.speaker.say("Taking a look.")
                     seen = self.screen.look(text)
@@ -92,21 +102,45 @@ class Assistant:
         # Never start the window on a dangling tool result.
         while trimmed and trimmed[0]["role"] == "tool":
             trimmed = trimmed[1:]
-        return [{"role": "system", "content": system_prompt()}, *trimmed]
+        return [{"role": "system", "content": system_prompt()}, *self._context(), *trimmed]
 
-    def respond(self, user_text: str) -> str:
+    @property
+    def is_guest(self) -> bool:
+        """True when the voice was checked and it isn't the owner's."""
+        return bool(self.speaking_as) and not self.speaking_as.get("owner")
+
+    def _context(self) -> list[dict]:
+        """Who is talking, and what the owner asked Jarvis to remember."""
+        lines = []
+        if self.is_guest:
+            lines.append("The person speaking now is NOT the owner: their voice wasn't recognised. Help with general "
+                         "questions, but don't reveal the owner's notes, schedule, reminders or memories, and don't "
+                         "run commands.")
+        else:
+            if self.owner_name:
+                recognised = " (you recognised their voice)" if self.speaking_as else ""
+                lines.append(f"You are talking with {self.owner_name}, the owner{recognised}. Use their name now and then.")
+            if self.memory is not None and self.memory.prompt():
+                lines.append(self.memory.prompt())
+        return [{"role": "system", "content": "\n\n".join(lines)}] if lines else []
+
+    def respond(self, user_text: str, speaking_as: dict | None = None) -> str:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
+        self.speaking_as = speaking_as
         self.history.append({"role": "user", "content": user_text})
-        quick = self.router.answer(user_text) if self.router else None
-        if quick:
+        hit = self.router.answer(user_text) if self.router else None
+        if hit:
+            name, reply = hit
+            if self.is_guest and name in PERSONAL_ROUTES:
+                reply = "Sorry, I only share that with the person I know. I didn't recognise your voice."
+            print(f"  [instant] {name}")
             self.last_source = "instant"
-            self.history.append({"role": "assistant", "content": quick})
-            self.speaker.say(quick)
-            self.speaker.wait()
-            return quick
-        self.last_source = "model"
-        tools = self.toolbox.specs() if self.tools_enabled else None
+            self.history.append({"role": "assistant", "content": reply})
+            self.speaker.say(reply)
+            return reply
+        tools = self.toolbox.specs() if self.tools_enabled and not self.is_guest else None
         spoken: list[str] = []
+        self.last_source = ""
 
         for _ in range(self.MAX_TOOL_ROUNDS):
             stream = SentenceStream()
@@ -117,6 +151,7 @@ class Assistant:
                     self.speaker.feed(sentence)
 
             msg = self.llm.chat_stream(self._messages(), tools=tools, on_text=on_text)
+            self.last_source = getattr(self.llm, "last_provider", "") or "local"
             for sentence in stream.flush():
                 spoken.append(sentence)
                 self.speaker.feed(sentence)
@@ -167,6 +202,8 @@ class Assistant:
             try:
                 self.respond(heard)
             except Exception as exc:  # keep the assistant alive on any single failure
+                from jarvis.errors import explain
+
                 print(f"  [error] {exc}")
-                self.speaker.say("Something went wrong on my end. Check the terminal for details.")
+                self.speaker.say(explain(exc))
         self.speaker.say("Signing off. Talk soon.")

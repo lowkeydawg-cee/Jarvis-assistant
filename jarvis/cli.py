@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+from pathlib import Path
 
 from jarvis import __version__
 from jarvis.assistant import Assistant
@@ -24,15 +25,45 @@ def build_brain(cfg: dict, llm: OllamaClient):
     )
 
 
+def day_facts(bot: Assistant, cfg: dict) -> str:
+    """Facts for the briefing: the watchers' (time, repos, disk) plus today's schedule."""
+    from jarvis.watchers import briefing_facts
+
+    facts = briefing_facts(cfg["proactive"])
+    if bot.skills is not None:
+        facts += "\n" + bot.skills.schedule("today")
+    return facts
+
+
 def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     """Register second brain, vision, briefing and MCP tools. Returns things to close."""
     closers = []
     box = bot.toolbox
+    data = Path(cfg["data_dir"]).expanduser()
 
-    if cfg.get("router", {}).get("enabled", True):
-        from jarvis.router import QuickRouter
+    from jarvis.memory import Memory
 
-        bot.router = QuickRouter()
+    bot.memory = Memory(data / "memory.json")
+    bot.owner_name = bot.owner_name or cfg["user"].get("name", "")
+    if cfg["reminders"]["enabled"]:
+        from jarvis.reminders import ReminderService, ReminderStore, announcement
+        from jarvis.skills import Skills
+
+        store = ReminderStore(data / "reminders.json")
+
+        def fire(r, late):
+            text = announcement(r, late)
+            bot.post("say", text)
+            if bot.on_reminder:
+                bot.on_reminder(r, text)
+
+        service = ReminderService(store, fire)
+        bot.skills = Skills(store, bot.memory, service)
+        if bot.router:
+            bot.skills.add_routes(bot.router)
+        for tool in bot.skills.tools():
+            box.register(tool)
+        service.start()
 
     if cfg["brain"]["enabled"]:
         brain = build_brain(cfg, llm)
@@ -50,6 +81,10 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             },
             handler=lambda a: brain.answer_context(str(a.get("query", "")), k=k),
         ))
+        if bot.router:
+            from jarvis.router import add_notes_route
+
+            add_notes_route(bot.router, brain.search)
         if cfg["brain"].get("reindex_on_start", True) and cfg["brain"]["folders"]:
             threading.Thread(
                 target=brain.index, args=(cfg["brain"]["folders"],), daemon=True, name="brain-index"
@@ -86,8 +121,12 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         box.register(Tool(
             name="daily_briefing",
             description="Get today's facts for a briefing: meetings, git repos, disk. Use for 'brief me' or 'what's my day'.",
-            handler=lambda a: briefing_facts(cfg["proactive"]),
+            handler=lambda a: day_facts(bot, cfg),
         ))
+        if bot.router:
+            from jarvis.router import BRIEFING_PATTERN, briefing_route
+
+            bot.router.add("briefing", BRIEFING_PATTERN, briefing_route(lambda: day_facts(bot, cfg)))
 
     servers = cfg["mcp"].get("servers") or {}
     if servers:
@@ -108,7 +147,7 @@ def start_watchers(bot: Assistant, cfg: dict) -> None:
 
     def briefing() -> None:
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
-                        "using these facts:\n" + briefing_facts(p))
+                        "using these facts:\n" + day_facts(bot, cfg))
 
     quiet = tuple(p["quiet_hours"]) if p.get("quiet_hours") else None
     Scheduler(build_watchers(p), lambda m: bot.post("say", m), quiet_hours=quiet,
@@ -123,6 +162,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--web", action="store_true", help="Run Jarvis in your browser (recommended on modest laptops)")
     parser.add_argument("--port", type=int, help="Port for --web (default 8765)")
     parser.add_argument("--local", action="store_true", help="Keep all thinking on this computer (no cloud model)")
+    parser.add_argument("--mic-test", action="store_true", help="Check your microphone: levels, speech detection, transcript")
+    parser.add_argument("--doctor", action="store_true", help="Check Ollama, models, the cloud key, disk and mic, with a fix for each problem")
     parser.add_argument("--wake", action="store_true", help="Wait for 'Hey Jarvis' before each request")
     parser.add_argument("--barge-in", action="store_true", help="Let yourself interrupt Jarvis (use headphones)")
     parser.add_argument("--index", nargs="*", metavar="FOLDER",
@@ -141,6 +182,15 @@ def main(argv: list[str] | None = None) -> None:
         cfg["voice"]["barge_in"] = True
     if args.local:
         cfg["llm"]["provider"] = "local"
+    if args.doctor:
+        from jarvis.doctor import print_report, run_checks
+
+        sys.exit(print_report(run_checks(cfg, include_port=True)))
+    if args.mic_test:
+        from jarvis import mictest
+
+        mictest.run(cfg)
+        return
 
     try:
         llm = build_llm(cfg)
@@ -154,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
             cfg["vision"]["model"] if cfg["vision"]["enabled"] else "",
         )
     except OllamaError as exc:
-        sys.exit(str(exc))
+        sys.exit(f"{exc}\nRun jarvis --doctor for a full check.")
 
     if args.index is not None:
         folders = args.index or cfg["brain"]["folders"]
@@ -171,8 +221,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.text:
         if args.speak:
-            from jarvis.tts import PiperVoice
-            speaker = Speaker(PiperVoice(cfg["tts"]))
+            from jarvis.tts import build_voice
+            speaker = Speaker(build_voice(cfg["tts"]))
         else:
             from jarvis.tts import PrintVoice
             speaker = Speaker(PrintVoice())
@@ -186,15 +236,15 @@ def main(argv: list[str] | None = None) -> None:
 
     print("Loading speech models, one moment...")
     from jarvis.audio import Microphone
-    from jarvis.stt import Transcriber
-    from jarvis.tts import PiperVoice
+    from jarvis.stt import build_transcriber
+    from jarvis.tts import build_voice
     from jarvis.voice import BargeIn, Vad
 
     vad = Vad(threshold=float(cfg["voice"]["vad_threshold"]))
     mic = Microphone(cfg["audio"], vad=vad)
-    ears = Transcriber(cfg["stt"])
+    ears = build_transcriber(cfg["stt"])
     barge = BargeIn(mic, vad, int(cfg["voice"]["barge_in_min_ms"])) if cfg["voice"]["barge_in"] else None
-    speaker = Speaker(PiperVoice(cfg["tts"]), barge_in=barge)
+    speaker = Speaker(build_voice(cfg["tts"]), barge_in=barge)
     bot: Assistant
 
     def listen() -> str:
@@ -220,7 +270,19 @@ def main(argv: list[str] | None = None) -> None:
     run(bot, cfg, llm, args, wait)
 
 
+def warm_up(llm) -> None:
+    """Load the local model in the background while Jarvis starts up."""
+    def go():
+        try:
+            llm.warm()
+        except Exception as exc:
+            print(f"  [brain] couldn't preload the model: {exc}")
+    if hasattr(llm, "warm"):
+        threading.Thread(target=go, daemon=True, name="warm-up").start()
+
+
 def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
+    warm_up(llm)
     closers = add_features(bot, cfg, llm)
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)
@@ -228,7 +290,7 @@ def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
         from jarvis.watchers import briefing_facts
 
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
-                        "using these facts:\n" + briefing_facts(cfg["proactive"]))
+                        "using these facts:\n" + day_facts(bot, cfg))
     return closers
 
 
@@ -236,7 +298,18 @@ def run_web(cfg: dict, llm, args) -> None:
     from jarvis.server import WebSession, serve
 
     session = WebSession(llm, cfg)
+    v = cfg["voice_id"]
+    if v["enabled"] and Path(v["model"]).is_file():
+        from jarvis.voiceid import VoiceID
+
+        session.voice = VoiceID(v["model"], Path(cfg["data_dir"]).expanduser() / "voiceprint.json",
+                                float(v["threshold"]))
+        session.bot.owner_name = session.voice.name
+    elif v["enabled"]:
+        print("  [voice] to recognise your voice, run: python scripts/download_speaker_model.py")
     closers = start_extras(session.bot, cfg, llm, args)
+    if session.bot.skills is not None:
+        session.attach_skills(session.bot.skills)
     w = cfg["web"]
     try:
         httpd, _ = serve(session, w["host"], args.port or int(w["port"]), bool(w.get("open_browser", True)))

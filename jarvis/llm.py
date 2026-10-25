@@ -13,11 +13,18 @@ class OllamaError(RuntimeError):
 
 
 class OllamaClient:
-    def __init__(self, host: str, model: str, temperature: float = 0.6, timeout: int = 120):
+    def __init__(self, host: str, model: str, temperature: float = 0.6, timeout: int = 120,
+                 keep_alive: str = "30m"):
         self.host = host.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        # Ollama unloads a model after 5 idle minutes, and reloading took 21 s on a CPU-only laptop.
+        self.keep_alive = keep_alive
+
+    def warm(self) -> None:
+        """Load the chat model into memory now, so the first question doesn't wait for it."""
+        self._post("/api/generate", {"model": self.model, "keep_alive": self.keep_alive})
 
     def models(self) -> set[str]:
         try:
@@ -66,6 +73,7 @@ class OllamaClient:
             "messages": messages,
             "stream": True,
             "options": {"temperature": self.temperature},
+            "keep_alive": self.keep_alive,
         }
         if tools:
             payload["tools"] = tools

@@ -1,10 +1,13 @@
-"""Instant answers for simple requests, so they never wait on a language model.
+"""Instant answers: common requests handled in code, before the language model.
 
-On a slow laptop the model takes over a minute just to read its instructions,
-and even the cloud adds a second. "What time is it" deserves neither. The
-router matches a handful of everyday requests exactly and answers them in
-code. Anything it isn't sure about goes to the model as usual, so a false
-match costs nothing worse than a normal reply.
+On a laptop without a GPU the model needs a minute or more per reply, most of it
+spent reading its long prompt. Asking the time shouldn't cost that. The router
+matches short, plain requests and answers them directly in well under a second.
+Anything it doesn't recognise, or any handler that returns None, goes to the
+model exactly as before.
+
+Patterns match the whole (normalised) request, so "what time is it" is handled
+here but "what time is it in Tokyo" still goes to the model.
 """
 
 from __future__ import annotations
@@ -12,103 +15,168 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
+Handler = Callable[[re.Match], "str | None"]
+
 _FILLER = re.compile(
-    r"\b(hey|hi|ok|okay|yo|jarvis|please|can you|could you|tell me|quickly|real quick|right now|now|for me)\b"
+    r"^(hey |ok |okay |yo |so |jarvis |please |can you |could you |would you |tell me |quickly )+"
 )
-_PUNCT = re.compile(r"[^\w\s]")  # "what's" becomes "what s"
 
 
-def normalize(text: str) -> str:
-    text = _PUNCT.sub(" ", text.lower())
-    text = _FILLER.sub(" ", text)
-    return re.sub(r"\s+", " ", text).strip()
+def normalise(text: str) -> str:
+    """Lowercase, drop apostrophes and punctuation, and strip polite openers."""
+    t = text.lower().replace("'", "").replace("’", "")
+    t = re.sub(r"[^a-z0-9 ]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = _FILLER.sub("", t + " ").strip()
+    return re.sub(r"( please| for me| now| right now| jarvis)+$", "", t).strip()
 
 
-def _ordinal(n: int) -> str:
-    if 11 <= n % 100 <= 13:
-        return f"{n}th"
-    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }"
+@dataclass
+class Route:
+    name: str
+    pattern: re.Pattern
+    handler: Handler
+    raw: bool = False  # handler also gets the original words (for times like 18:30 or "5 p.m.")
 
 
-def _spoken_time(now: datetime) -> str:
-    hour = now.hour % 12 or 12
-    suffix = "in the morning" if now.hour < 12 else "in the afternoon" if now.hour < 18 else "in the evening"
-    if now.minute == 0:
-        return f"It's {hour} o'clock {suffix}."
-    minute = f"oh {now.minute}" if now.minute < 10 else str(now.minute)
-    return f"It's {hour} {minute} {suffix}."
+class Router:
+    def __init__(self, routes: bool = True):
+        self.routes: list[Route] = []
+        if routes:
+            add_builtin_routes(self)
+
+    def add(self, name: str, pattern: str, handler: Callable, raw: bool = False) -> None:
+        """Register a route. `pattern` must match the entire normalised request.
+
+        With raw=True the handler is called as handler(match, original_text).
+        """
+        self.routes.append(Route(name, re.compile(rf"^(?:{pattern})$"), handler, raw))
+
+    def answer(self, text: str) -> tuple[str, str] | None:
+        """Return (route name, spoken reply), or None to let the model answer."""
+        t = normalise(text)
+        if not t:
+            return None
+        for route in self.routes:
+            m = route.pattern.match(t)
+            if not m:
+                continue
+            try:
+                reply = route.handler(m, text) if route.raw else route.handler(m)
+            except Exception as exc:  # a broken shortcut must never break the conversation
+                print(f"  [instant] {route.name} failed, asking the model instead: {exc}")
+                return None
+            if reply:
+                return route.name, reply
+        return None
 
 
-def _spoken_date(now: datetime) -> str:
-    return f"It's {now:%A}, the {_ordinal(now.day)} of {now:%B}."
+# ---- built-in routes ------------------------------------------------------
 
 
-def _disk(path: str | None = None) -> str:
-    total, _, free = shutil.disk_usage(path or os.path.expanduser("~"))
-    gb = 1024 ** 3
-    pct = round(100 * free / total)
-    tone = " That's getting tight." if free / gb < 10 else ""
-    return f"You've got about {free / gb:.0f} gigabytes free out of {total / gb:.0f}, so {pct} percent.{tone}"
+def _time(now: Callable[[], datetime]) -> Handler:
+    def handler(m):
+        n = now()
+        return f"It's {n.hour % 12 or 12}:{n.minute:02d} {'AM' if n.hour < 12 else 'PM'}."
+    return handler
 
 
-def _battery() -> str:
+def _date(now: Callable[[], datetime]) -> Handler:
+    def handler(m):
+        n = now()
+        return f"It's {n:%A}, {n.day} {n:%B}."
+    return handler
+
+
+def _battery(read: Callable[[], tuple[float, bool] | None]) -> Handler:
+    def handler(m):
+        state = read()
+        if state is None:
+            return "I can't find a battery on this computer."
+        percent, plugged = state
+        return f"Your battery is at {percent:.0f} percent{' and charging' if plugged else ''}."
+    return handler
+
+
+def _read_battery():
     try:
         import psutil
     except ImportError:
-        return "I can't read the battery yet. Install the proactive extras to enable that."
+        return None
     b = psutil.sensors_battery()
-    if b is None:
-        return "I don't see a battery on this machine."
-    state = "and charging" if b.power_plugged else "on battery"
-    return f"You're at {b.percent:.0f} percent, {state}."
+    return (b.percent, b.power_plugged) if b else None
 
 
-_HELP = (
-    "I can answer questions, check your disk and battery, search your notes, look at your screen, "
-    "run safe commands after you say yes, and brief you on your day. Just ask."
+def _disk(usage: Callable[[str], object]) -> Handler:
+    def handler(m):
+        free = usage(os.path.expanduser("~")).free / 1024 ** 3
+        return f"You have {free:.0f} gigabytes free on your main drive."
+    return handler
+
+
+HELP = (
+    "I can tell you the time, the date, your battery and disk space, give you a briefing, "
+    "and search your notes. For anything else, just ask and I'll think it through."
 )
 
-# (pattern on the normalized text, answer). Patterns are anchored so only short,
-# unambiguous requests match: "what time is the meeting" still goes to the model.
-_TIME = r"(what s|what is|whats)? ?(the )?time( is it)?|what time is it|got the time|time check"
-_DATE = (r"(what s|what is|whats) (the date|today s date|todays date)( today)?|what day is (it|today)"
-         r"|what s today|what is today|today s date|the date")
-_DISK = (r"(how much )?(free )?(disk|storage|drive) ?(space)?( do i have| is left| left| free)?"
-         r"|how s my (disk|storage|drive)|how is my (disk|storage|drive)|how much space (do i have|is left)( left)?|free space")
-_BATTERY = (r"(how s|how is|what s|what is|check) (my |the )?battery( level| life| status)?|battery( level| status| life)?"
-            r"|how much battery (do i have|is left)( left)?")
-_HELP_RE = r"what can you do|help|what are you able to do"
+
+def add_builtin_routes(router: Router, now: Callable[[], datetime] = datetime.now,
+                       battery=_read_battery, disk_usage=shutil.disk_usage) -> None:
+    router.add("time", r"((whats|what is) )?the time|what time (is it|it is)|time( is it)?", _time(now))
+    router.add("date", r"(whats|what is) (the date|todays date)( today)?|what day is (it|today)|whats today|"
+                       r"what is today|(the |todays )?date", _date(now))
+    router.add("battery", r"((hows|how is|whats|what is|check) )?(my |the )?battery( level| life| status| percentage)?"
+                          r"( like| at)?", _battery(battery))
+    router.add("disk", r"((hows|how is|whats|what is|check|how much) )?(my |the )?(free )?(disk|storage|drive)"
+                       r"( space)?( free| left| like)?( do i have)?( left)?", _disk(disk_usage))
+    router.add("help", r"help|what can you do|what are you able to do", lambda m: HELP)
 
 
-class QuickRouter:
-    def __init__(self, clock: Callable[[], datetime] = datetime.now, disk: Callable[[], str] = _disk,
-                 battery: Callable[[], str] = _battery):
-        self.routes: list[tuple[str, re.Pattern, Callable[[], str]]] = [
-            ("time", re.compile(rf"^(?:{_TIME})$"), lambda: _spoken_time(clock())),
-            ("date", re.compile(rf"^(?:{_DATE})$"), lambda: _spoken_date(clock())),
-            ("disk", re.compile(rf"^(?:{_DISK})$"), disk),
-            ("battery", re.compile(rf"^(?:{_BATTERY})$"), battery),
-            ("help", re.compile(rf"^(?:{_HELP_RE})$"), lambda: _HELP),
-        ]
+# ---- routes that need other parts of Jarvis -------------------------------
 
-    def match(self, text: str) -> tuple[str, Callable[[], str]] | None:
-        norm = normalize(text)
-        if not norm or len(norm.split()) > 8:
+
+def briefing_route(facts: Callable[[], str]) -> Handler:
+    """Speak the briefing facts directly instead of having the model reword them."""
+    def handler(m):
+        lines = [ln.strip().rstrip(".") for ln in facts().splitlines() if ln.strip()]
+        return ". ".join(lines) + "." if lines else None
+    return handler
+
+
+BRIEFING_PATTERN = r"brief me|(give me )?(my |the |todays |a )?(morning )?briefing|whats my day( look)?( like)?|" \
+                   r"what does my day look like"
+
+
+def notes_route(search: Callable[[str, int], list], min_score: float = 0.3, max_chars: int = 220) -> Handler:
+    """Read out the best matching note. Returns None (ask the model) when nothing fits."""
+    def handler(m):
+        groups = m.groupdict()
+        query = (groups.get("q") or groups.get("q2") or "").strip()
+        if not query:
             return None
-        for name, pattern, answer in self.routes:
-            if pattern.match(norm):
-                return name, answer
-        return None
+        hits = [h for h in search(query, 1) if h[0] >= min_score]
+        if not hits:
+            return f"I couldn't find anything about {query} in your notes."
+        _, path, text = hits[0]
+        from jarvis.persona import speakable
 
-    def answer(self, text: str) -> str | None:
-        """The instant answer, or None to let the model handle it."""
-        hit = self.match(text)
-        if hit is None:
-            return None
-        try:
-            return hit[1]()
-        except Exception:
-            return None  # a broken quick answer should fall through to the model
+        snippet = re.sub(r"\s+", " ", speakable(text)).strip()
+        if len(snippet) > max_chars:
+            snippet = snippet[:max_chars].rsplit(" ", 1)[0] + "..."
+        return f"The best match is in {Path(path).name}. It says: {snippet}"
+    return handler
+
+
+NOTES_PATTERN = (
+    r"(search|check|look (in|through)|find in) my notes (for|about|on) (?P<q>.+)|"
+    r"where did i (write|save|put|note|keep) ((down|about|on|the|my) )*(?P<q2>.+)"
+)
+
+
+def add_notes_route(router: Router, search: Callable[[str, int], list]) -> None:
+    router.add("notes", NOTES_PATTERN, notes_route(search))

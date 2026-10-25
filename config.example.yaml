@@ -11,9 +11,10 @@ llm:
   # Ollama if it's down. local keeps everything on this machine. cloud skips Ollama.
   provider: hybrid
   private: false                   # true forces local; the web app has a switch for this
+  local_tools: true                # false: the local model gets a short prompt and no tools. Much faster
+                                   # on laptops without a GPU (instant answers still cover the basics)
   cloud:
-    # Groq is fast and has a free tier: get a key at console.groq.com/keys, then in
-    # PowerShell run:  setx GROQ_API_KEY "your-key"  and open a new terminal.
+    # Groq is fast and has a free tier. To add your key safely, follow docs/SETUP-KEYS.md.
     base_url: https://api.groq.com/openai/v1
     model: llama-3.3-70b-versatile
     api_key_env: GROQ_API_KEY
@@ -21,8 +22,8 @@ llm:
     # base_url: https://openrouter.ai/api/v1      (api_key_env: OPENROUTER_API_KEY)
     # base_url: https://api.anthropic.com/v1     (api_key_env: ANTHROPIC_API_KEY, a Claude model)
 
-# Instant answers for the time, date, disk, battery and "what can you do",
-# straight from code with no model call. Anything else still goes to the brain.
+# Instant answers: time, date, battery, disk, "brief me" and "where did I write about X"
+# are answered in code in under a second, without waiting for the model.
 router:
   enabled: true
 
@@ -33,16 +34,27 @@ web:
   open_browser: true
 
 stt:
+  provider: local                  # local, or cloud: Groq Whisper (about 1 s), falls back to local
+  # cloud:
+  #   model: whisper-large-v3-turbo
+  #   api_key_env: GROQ_API_KEY
   model: base.en                   # tiny.en, base.en, small.en, medium.en, large-v3
   device: auto                     # auto, cpu, cuda
   compute_type: int8               # int8 is fast on CPU, float16 on GPU
   language: en
 
 tts:
+  engine: piper                    # piper (fast) or kokoro (far more natural; needs a quicker CPU)
   # Path to a Piper voice (.onnx with its .onnx.json next to it).
   voice: voices/en_GB-alan-medium.onnx
+  # Kokoro: run python scripts/download_kokoro.py first.
+  kokoro_model: voices/kokoro-v1.0.int8.onnx
+  kokoro_voices: voices/voices-v1.0.bin
+  kokoro_voice: bm_george          # British: bm_george, bm_lewis, bf_emma. American: am_michael, af_heart
+  speed: 1.1
 
 audio:
+  device:                          # empty = Windows default mic. jarvis --mic-test lists the numbers.
   sample_rate: 16000
   silence_threshold: 0.012         # only used if the Silero model can't load
   silence_seconds: 1.0             # stop recording after this much quiet
