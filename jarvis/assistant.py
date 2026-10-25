@@ -203,6 +203,8 @@ class Assistant:
             try:
                 self.respond(heard)
             except Exception as exc:  # keep the assistant alive on any single failure
+                from jarvis.errors import explain
+
                 print(f"  [error] {exc}")
-                self.speaker.say("Something went wrong on my end. Check the terminal for details.")
+                self.speaker.say(explain(exc))
         self.speaker.say("Signing off. Talk soon.")
