@@ -7,6 +7,25 @@ llm:
   temperature: 0.6
   history_turns: 12                # how many past exchanges Jarvis remembers
   timeout: 300                     # seconds to wait for a reply; raise on slow laptops
+  # The hybrid brain. hybrid sends thinking to a fast cloud model and falls back to
+  # Ollama if it's down. local keeps everything on this machine. cloud skips Ollama.
+  provider: hybrid
+  private: false                   # true forces local; the web app has a switch for this
+  cloud:
+    # Groq is fast and has a free tier: get a key at console.groq.com/keys, then in
+    # PowerShell run:  setx GROQ_API_KEY "your-key"  and open a new terminal.
+    base_url: https://api.groq.com/openai/v1
+    model: llama-3.3-70b-versatile
+    api_key_env: GROQ_API_KEY
+    # Any OpenAI-compatible API works. Two examples:
+    # base_url: https://openrouter.ai/api/v1      (api_key_env: OPENROUTER_API_KEY)
+    # base_url: https://api.anthropic.com/v1     (api_key_env: ANTHROPIC_API_KEY, a Claude model)
+
+# The browser app:  jarvis --web
+web:
+  host: 127.0.0.1                  # only this computer can open it
+  port: 8765
+  open_browser: true
 
 stt:
   model: base.en                   # tiny.en, base.en, small.en, medium.en, large-v3

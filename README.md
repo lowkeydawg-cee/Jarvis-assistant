@@ -1,8 +1,11 @@
 # Jarvis
 
-A personal voice assistant that runs entirely on your own computer. It talks back while it's still thinking, and you can cut it off mid-sentence. It answers from your own notes and code, looks at your screen when you ask, plugs into apps through the Model Context Protocol, and speaks up on its own when something needs your attention.
+A personal voice assistant for developers. It talks back while it's still thinking, and you can cut it off mid-sentence. It answers from your own notes and code, looks at your screen when you ask, plugs into apps through the Model Context Protocol, and speaks up on its own when something needs your attention.
 
-No cloud APIs, no API keys, nothing leaves your machine.
+It runs two ways:
+
+- **In your browser** (`jarvis --web`). The browser listens and speaks with natural neural voices, a fast cloud model does the thinking, and your own Ollama takes over when you flip the Private switch or the cloud is down. Replies start in about a second, even on an 8 GB laptop with no GPU.
+- **Fully local** (`jarvis --local`). Whisper, Piper and Ollama on your machine, nothing leaves it. Best with a GPU.
 
 ```
 You:    "Hey Jarvis, where did I write that auth fix?"
@@ -21,6 +24,8 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 
 | Feature | What it does | Built with |
 |---|---|---|
+| Hybrid brain | Cloud model first for speed, local Ollama as fallback and for private questions. Embeddings and vision always stay local. | Any OpenAI-compatible API (Groq by default), Ollama |
+| Browser app | Orb UI with push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
 | Streaming voice | Speaks the first sentence while the model is still writing the rest. Optional barge-in lets you interrupt. | Ollama streaming, Piper, Silero VAD |
 | MCP agent | Connects to any Model Context Protocol server (files, git, calendar, browser) and exposes its tools to the model. | `mcp` Python SDK |
 | Second brain | Indexes your notes, PDFs and code locally and answers questions from them, citing the file. | Ollama embeddings, SQLite, NumPy |
@@ -28,7 +33,39 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Proactive mode | Battery, disk, meeting and build-log watchers, plus a daily briefing, with quiet hours. | psutil, icalendar |
 | Safe actions | Allowlisted shell commands with spoken confirmation, and per-server confirmation for MCP tools. | Pure-Python policy, fully tested |
 
-Everything is optional and switched on in `config.yaml`, so the basic voice assistant still runs on a modest laptop.
+Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
+
+## Web mode, the quick way to try it
+
+```powershell
+pip install -e .                      # the web app needs no extras
+setx GROQ_API_KEY "your-key"          # free key from console.groq.com/keys, then open a new terminal
+jarvis --web                          # or double-click start-jarvis-web.bat
+```
+
+Your browser opens at http://localhost:8765. Tap the orb or press Space and talk, or type. Use Microsoft Edge for the most natural voices (Ryan and Guy sound the most like Jarvis), and pick one in the settings panel.
+
+How it fits together:
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        Mic[Speech recognition] --> UI[Orb UI]
+        UI --> Voice[Neural voice]
+    end
+    UI -- POST /api/chat --> Inbox[(Inbox)]
+    Inbox --> Brain{Hybrid brain}
+    Brain -- default --> Cloud[Cloud model]
+    Brain -- private or offline --> Ollama[Local Ollama]
+    Brain <--> Tools[Tools and MCP]
+    Brain -- sentences, confirmations, alerts --> SSE[/api/events stream/] --> UI
+```
+
+Every reply streams back one sentence at a time over Server-Sent Events, so the browser starts speaking the first sentence while the model is still writing the rest. Watcher alerts and the morning briefing come down the same stream. When Jarvis wants to run a command it asks out loud and shows Yes and No buttons; answering by voice works too.
+
+Privacy in web mode: the Private switch keeps the thinking on your machine. Speech recognition in Chrome and Edge uses the browser maker's speech service, so for fully offline voice use `jarvis --local`. The server only listens on 127.0.0.1 and refuses requests from other websites.
+
+Any OpenAI-compatible provider works. Change `llm.cloud` in `config.yaml` to use OpenRouter, OpenAI, or Claude through Anthropic's OpenAI-compatible endpoint.
 
 ## How it works
 
@@ -63,6 +100,9 @@ flowchart LR
 ```
 jarvis/
   cli.py          entry point; wires optional features together
+  cloud.py        hybrid brain: OpenAI-compatible streaming client and the local fallback router
+  server.py       web mode: local HTTP server, event stream, confirmations
+  webui/          the browser app (one HTML file, no build step)
   assistant.py    conversation loop, tool-call loop, inbox
   persona.py      Jarvis's system prompt and the TTS cleanup filter
   llm.py          Ollama client: streaming chat, vision, embeddings
@@ -78,7 +118,7 @@ jarvis/
 scripts/
   download_voice.py     fetches a Piper voice
   install_startup.ps1   start Jarvis when you sign in to Windows
-tests/                  30 tests, no models or mic needed
+tests/                  40 tests, no models, mic or API key needed
 ```
 
 ## Setup
@@ -141,6 +181,8 @@ jarvis --wake              # say "Hey Jarvis" first
 jarvis --barge-in          # interrupt it by talking (use headphones)
 jarvis --briefing          # get the daily briefing right away
 jarvis --text              # type instead of talk, handy for testing
+jarvis --web               # the browser app
+jarvis --local             # never use the cloud model
 ```
 
 To have it start when you sign in to Windows:
@@ -179,7 +221,7 @@ The tests cover the command policy, sentence streaming and code-block skipping, 
 
 ## Status
 
-Work in progress. Typed mode, the second brain, MCP file tools and the briefing run on a real Windows laptop. Voice mode is not reliable yet on low-end hardware: on an 8 GB laptop with no GPU, replies take over a minute and the mic often isn't picked up. Hardware needs and a lighter voice pipeline are the next things to work on.
+Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback.
 
 ## Ideas for next steps
 

@@ -8,6 +8,7 @@ import threading
 
 from jarvis import __version__
 from jarvis.assistant import Assistant
+from jarvis.cloud import CloudError, build_llm
 from jarvis.config import load_config
 from jarvis.llm import OllamaClient, OllamaError
 from jarvis.tools import Tool
@@ -114,6 +115,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", help="Path to config.yaml")
     parser.add_argument("--text", action="store_true", help="Type instead of talk (no mic or speakers)")
     parser.add_argument("--speak", action="store_true", help="In text mode, still speak replies aloud")
+    parser.add_argument("--web", action="store_true", help="Run Jarvis in your browser (recommended on modest laptops)")
+    parser.add_argument("--port", type=int, help="Port for --web (default 8765)")
+    parser.add_argument("--local", action="store_true", help="Keep all thinking on this computer (no cloud model)")
     parser.add_argument("--wake", action="store_true", help="Wait for 'Hey Jarvis' before each request")
     parser.add_argument("--barge-in", action="store_true", help="Let yourself interrupt Jarvis (use headphones)")
     parser.add_argument("--index", nargs="*", metavar="FOLDER",
@@ -130,9 +134,15 @@ def main(argv: list[str] | None = None) -> None:
         cfg["wake_word"]["enabled"] = True
     if args.barge_in:
         cfg["voice"]["barge_in"] = True
+    if args.local:
+        cfg["llm"]["provider"] = "local"
 
-    llm = OllamaClient(cfg["llm"]["host"], cfg["llm"]["model"], cfg["llm"]["temperature"],
-                       timeout=int(cfg["llm"].get("timeout", 300)))
+    try:
+        llm = build_llm(cfg)
+    except CloudError as exc:
+        sys.exit(str(exc))
+    if hasattr(llm, "describe"):
+        print(f"  [brain] {llm.describe()}")
     try:
         llm.check(
             cfg["brain"]["embed_model"] if cfg["brain"]["enabled"] or args.index is not None else "",
@@ -146,6 +156,10 @@ def main(argv: list[str] | None = None) -> None:
         if not folders:
             sys.exit("Nothing to index. Pass folders or set brain.folders in config.yaml.")
         build_brain(cfg, llm).index(folders)
+        return
+
+    if args.web:
+        run_web(cfg, llm, args)
         return
 
     from jarvis.voice import Speaker
@@ -201,7 +215,7 @@ def main(argv: list[str] | None = None) -> None:
     run(bot, cfg, llm, args, wait)
 
 
-def run(bot: Assistant, cfg: dict, llm: OllamaClient, args, wait=None) -> None:
+def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
     closers = add_features(bot, cfg, llm)
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)
@@ -210,6 +224,31 @@ def run(bot: Assistant, cfg: dict, llm: OllamaClient, args, wait=None) -> None:
 
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
                         "using these facts:\n" + briefing_facts(cfg["proactive"]))
+    return closers
+
+
+def run_web(cfg: dict, llm, args) -> None:
+    from jarvis.server import WebSession, serve
+
+    session = WebSession(llm, cfg)
+    closers = start_extras(session.bot, cfg, llm, args)
+    w = cfg["web"]
+    try:
+        httpd, _ = serve(session, w["host"], args.port or int(w["port"]), bool(w.get("open_browser", True)))
+    except OSError as exc:
+        sys.exit(f"Couldn't start the web server: {exc}. Is Jarvis already running? Try --port 8766.")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        httpd.server_close()
+        for c in closers:
+            c.close()
+
+
+def run(bot: Assistant, cfg: dict, llm: OllamaClient, args, wait=None) -> None:
+    closers = start_extras(bot, cfg, llm, args)
     try:
         bot.run(wait_for_wake=wait)
     except KeyboardInterrupt:

@@ -45,6 +45,7 @@ class Assistant:
         self.inbox: queue.Queue = queue.Queue()
         self.attention = threading.Event()
         self.screen = None  # set by the CLI when vision is enabled
+        self.on_error: Callable[[Exception], None] | None = None
 
     # ---- inbox -----------------------------------------------------------
 
@@ -74,6 +75,8 @@ class Assistant:
                     )
             except Exception as exc:
                 print(f"  [error] {exc}")
+                if self.on_error:
+                    self.on_error(exc)
 
     # ---- conversation ----------------------------------------------------
 
@@ -126,7 +129,10 @@ class Assistant:
                     except json.JSONDecodeError:
                         args = {}
                 result = self.toolbox.call(fn.get("name", ""), args)
-                self.history.append({"role": "tool", "content": result, "tool_name": fn.get("name", "")})
+                self.history.append({
+                    "role": "tool", "content": result, "tool_name": fn.get("name", ""),
+                    **({"tool_call_id": call["id"]} if call.get("id") else {}),
+                })
 
         fallback = "I got a bit tangled up there. Could you ask that another way?"
         self.speaker.say(fallback)

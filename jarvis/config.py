@@ -15,6 +15,21 @@ DEFAULTS: dict[str, Any] = {
         "temperature": 0.6,
         "history_turns": 12,
         "timeout": 300,
+        # hybrid: cloud first, local Ollama as fallback. local: Ollama only. cloud: cloud only.
+        "provider": "hybrid",
+        "private": False,
+        "cloud": {
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "llama-3.3-70b-versatile",
+            "api_key_env": "GROQ_API_KEY",
+            "api_key": "",
+            "timeout": 60,
+        },
+    },
+    "web": {
+        "host": "127.0.0.1",
+        "port": 8765,
+        "open_browser": True,
     },
     "stt": {
         "model": "base.en",

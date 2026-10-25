@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-local"
-version = "0.2.0"
-description = "A fully local, voice-first personal assistant: streaming voice, MCP tools, a second brain, screen vision and proactive alerts."
+version = "0.3.0"
+description = "A voice-first personal assistant with a hybrid cloud and local brain, a browser app, MCP tools, a second brain, screen vision and proactive alerts."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -58,6 +58,9 @@ jarvis = "jarvis.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["jarvis*"]
+
+[tool.setuptools.package-data]
+jarvis = ["webui/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

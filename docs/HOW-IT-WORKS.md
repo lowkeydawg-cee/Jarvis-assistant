@@ -83,6 +83,18 @@ Say you ask: *"Hey Jarvis, where did I write that auth fix?"*
 
 **How alerts get in.** Watchers and the screen hotkey drop messages into an *inbox*. Jarvis checks the inbox between conversations, so an alert never cuts across something you're in the middle of saying.
 
+## Version 0.3: the browser app and the hybrid brain
+
+The first version did everything on the laptop: listening, thinking and speaking. On an 8 GB laptop with no graphics card, that meant about a minute per reply. Version 0.3 splits the work so each part runs where it's fastest.
+
+**The browser does the ears and the mouth.** Chrome and Edge can already turn speech into text and text into speech. Edge in particular has neural voices, like Ryan and Guy, that sound close to a real person. So the laptop no longer loads Whisper or Piper at all.
+
+**A cloud model does the thinking, Ollama is the backup.** Jarvis sends your question to a fast hosted model (Groq by default, which is free to start). If the cloud is down, or you flip the Private switch, the same question goes to the Ollama model on your laptop instead. Your notes index and screenshots always stay local, whichever brain answers.
+
+**One live stream ties it together.** The browser keeps a single connection open to Jarvis. Every sentence, every "should I go ahead?", every battery warning and the morning briefing come down that one stream, and the browser speaks each sentence as soon as it arrives. Your words go back up with a simple request, and land in the same inbox the watchers use.
+
+**Asking before acting still works.** When Jarvis wants to run a command, it says so, asks, and shows Yes and No buttons. You can tap one or just say yes.
+
 ## Keeping it safe
 
 Every action, whether it's a built-in tool or an MCP tool, goes through one checkpoint before it runs.

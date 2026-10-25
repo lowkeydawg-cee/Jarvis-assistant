@@ -1,0 +1,258 @@
+"""The browser version of Jarvis: a tiny local web server around the same Assistant.
+
+The browser does the ears and the voice (the Web Speech API, which on Edge
+includes Microsoft's natural neural voices), so the laptop never loads Whisper
+or Piper. This server only does the thinking and the tools.
+
+Everything Jarvis says reaches the browser through one Server-Sent Events
+stream at /api/events: replies, tool announcements, confirmation questions,
+watcher alerts and the briefing. The browser posts what you said to
+/api/chat, which lands in the Assistant's inbox like any other request.
+
+Only the standard library is used, so there is nothing extra to install.
+"""
+
+from __future__ import annotations
+
+import json
+import queue
+import threading
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
+from urllib.parse import urlsplit
+
+from jarvis import __version__
+from jarvis.assistant import Assistant
+
+CONFIRM_TIMEOUT = 60
+
+
+class EventHub:
+    """Fans events out to every open browser tab."""
+
+    def __init__(self):
+        self._subs: list[queue.Queue] = []
+        self._lock = threading.Lock()
+
+    def subscribe(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue()
+        with self._lock:
+            self._subs.append(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self._lock:
+            if q in self._subs:
+                self._subs.remove(q)
+
+    def publish(self, event: dict) -> None:
+        with self._lock:
+            subs = list(self._subs)
+        for q in subs:
+            q.put(event)
+
+
+class WebSpeaker:
+    """Speaker stand-in: sentences go to the browser, which speaks them."""
+
+    def __init__(self, hub: EventHub):
+        self.hub = hub
+        self._interrupted = threading.Event()
+
+    def feed(self, sentence: str) -> None:
+        if not self._interrupted.is_set():
+            self.hub.publish({"type": "sentence", "text": sentence})
+
+    def say(self, sentence: str) -> bool:
+        self.feed(sentence)
+        return False
+
+    def wait(self) -> bool:
+        """Called at the end of each model round. True if the user cut Jarvis off."""
+        hit = self._interrupted.is_set()
+        self._interrupted.clear()
+        return hit
+
+    def interrupt(self) -> None:
+        self._interrupted.set()
+
+
+class WebSession:
+    """One Assistant, its worker thread, and the plumbing for confirmations."""
+
+    def __init__(self, llm, cfg: dict):
+        self.cfg = cfg
+        self.llm = llm
+        self.hub = EventHub()
+        self.speaker = WebSpeaker(self.hub)
+        self.answers: queue.Queue = queue.Queue()
+        self.confirming = threading.Event()
+        self.bot = Assistant(llm, self.speaker, self._listen, cfg)
+        self.bot.on_error = self._on_error
+        self._worker = threading.Thread(target=self._work, daemon=True, name="jarvis-web")
+
+    def start(self) -> None:
+        self._worker.start()
+
+    # The Assistant only listens mid-turn to ask "should I go ahead?".
+    def _listen(self) -> str:
+        while not self.answers.empty():
+            self.answers.get_nowait()
+        self.confirming.set()
+        self.hub.publish({"type": "confirm"})
+        try:
+            return self.answers.get(timeout=CONFIRM_TIMEOUT)
+        except queue.Empty:
+            return ""
+        finally:
+            self.confirming.clear()
+            self.hub.publish({"type": "confirm_done"})
+
+    def _on_error(self, exc: Exception) -> None:
+        self.hub.publish({"type": "error", "text": str(exc)})
+        self.speaker.say("Something went wrong on my end. The details are on screen.")
+
+    def _work(self) -> None:
+        while True:
+            self.bot.attention.wait()
+            self.hub.publish({"type": "state", "state": "thinking"})
+            self.bot.drain_inbox()
+            self.hub.publish({
+                "type": "state", "state": "idle",
+                "provider": getattr(self.llm, "last_provider", "") or "local",
+            })
+
+    # ---- actions from the browser ----------------------------------------
+
+    def chat(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        if self.confirming.is_set():
+            self.answers.put(text)  # "yes" or "no" to a pending question
+        else:
+            self.bot.post("ask", text)
+
+    def confirm(self, answer: str) -> None:
+        self.answers.put(answer)
+
+    def status(self) -> dict:
+        llm = self.llm
+        return {
+            "version": __version__,
+            "brain": llm.describe() if hasattr(llm, "describe") else f"local ({llm.model})",
+            "cloud": bool(getattr(llm, "cloud", None)),
+            "private": bool(getattr(llm, "private", True)),
+            "tools": sorted(self.bot.toolbox.tools),
+        }
+
+    def set_private(self, value: bool) -> None:
+        if hasattr(self.llm, "private"):
+            self.llm.private = value
+
+
+def page() -> bytes:
+    return resources.files("jarvis").joinpath("webui/index.html").read_bytes()
+
+
+def make_handler(session: WebSession, allowed_hosts: set[str]):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = f"Jarvis/{__version__}"
+
+        def log_message(self, fmt, *args):  # keep the terminal quiet
+            pass
+
+        # Only answer requests addressed to this computer, from this page. That
+        # stops other websites from talking to Jarvis behind your back.
+        def _trusted(self) -> bool:
+            if self.headers.get("Host", "") not in allowed_hosts:
+                return False
+            origin = self.headers.get("Origin")
+            return origin is None or urlsplit(origin).netloc in allowed_hosts
+
+        def _send(self, status: int, body: bytes, kind: str = "application/json") -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json(self, data: dict, status: int = 200) -> None:
+            self._send(status, json.dumps(data).encode())
+
+        def do_GET(self):
+            if not self._trusted():
+                return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            path = urlsplit(self.path).path
+            if path == "/":
+                return self._send(200, page(), "text/html; charset=utf-8")
+            if path == "/api/status":
+                return self._json(session.status())
+            if path == "/api/events":
+                return self._events()
+            self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+
+        def do_POST(self):
+            if not self._trusted():
+                return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            try:
+                length = min(int(self.headers.get("Content-Length") or 0), 64_000)
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._json({"error": "bad json"}, HTTPStatus.BAD_REQUEST)
+            path = urlsplit(self.path).path
+            if path == "/api/chat":
+                session.chat(str(body.get("text", "")))
+            elif path == "/api/confirm":
+                session.confirm(str(body.get("answer", "")))
+            elif path == "/api/interrupt":
+                session.speaker.interrupt()
+            elif path == "/api/settings":
+                if "private" in body:
+                    session.set_private(bool(body["private"]))
+            elif path == "/api/reset":
+                session.bot.history.clear()
+            else:
+                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            self._json({"ok": True, **session.status()})
+
+        def _events(self):
+            q = session.hub.subscribe()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(b"retry: 2000\n\n")
+                self.wfile.flush()
+                while True:
+                    try:
+                        event = q.get(timeout=15)
+                        self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
+                    except queue.Empty:
+                        self.wfile.write(b": ping\n\n")  # keeps proxies and the browser from timing out
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+            finally:
+                session.hub.unsubscribe(q)
+
+    return Handler
+
+
+def serve(session: WebSession, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True):
+    names = {host, "localhost", "127.0.0.1"} if host in {"127.0.0.1", "localhost", "0.0.0.0"} else {host}
+    allowed: set[str] = set()
+    httpd = ThreadingHTTPServer((host, port), make_handler(session, allowed))
+    httpd.daemon_threads = True
+    port = httpd.server_port  # the real port, in case 0 asked for any free one
+    allowed.update(f"{n}:{port}" for n in names)
+    session.start()
+    url = f"http://{'localhost' if host in {'127.0.0.1', '0.0.0.0'} else host}:{port}"
+    print(f"  Jarvis is live at {url}  (Ctrl+C to stop)")
+    if open_browser:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    return httpd, url
