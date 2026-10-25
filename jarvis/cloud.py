@@ -220,6 +220,10 @@ class HybridLLM:
         self.last_provider = "local"
         return msg
 
+    def warm(self) -> None:
+        if not self.cloud or self.private:
+            self.local.warm()
+
     def vision(self, model, prompt, image_b64):
         return self.local.vision(model, prompt, image_b64)
 
@@ -230,7 +234,8 @@ class HybridLLM:
 def build_llm(cfg: dict, log: Callable[[str], None] = print):
     """Build the brain from config: local, cloud, or hybrid (the default when a key is set)."""
     c = cfg["llm"]
-    local = OllamaClient(c["host"], c["model"], c["temperature"], timeout=int(c.get("timeout", 300)))
+    local = OllamaClient(c["host"], c["model"], c["temperature"], timeout=int(c.get("timeout", 300)),
+                         keep_alive=str(c.get("keep_alive", "30m")))
     provider = str(c.get("provider", "hybrid")).lower()
     local_tools = bool(c.get("local_tools", True))
     if provider == "local":

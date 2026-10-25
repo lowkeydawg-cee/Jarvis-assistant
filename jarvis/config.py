@@ -15,6 +15,7 @@ DEFAULTS: dict[str, Any] = {
         "temperature": 0.6,
         "history_turns": 12,
         "timeout": 300,
+        "keep_alive": "30m",           # how long Ollama keeps the model loaded between questions
         # hybrid: cloud first, local Ollama as fallback. local: Ollama only. cloud: cloud only.
         "provider": "hybrid",
         "private": False,

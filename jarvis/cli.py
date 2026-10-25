@@ -229,7 +229,19 @@ def main(argv: list[str] | None = None) -> None:
     run(bot, cfg, llm, args, wait)
 
 
+def warm_up(llm) -> None:
+    """Load the local model in the background while Jarvis starts up."""
+    def go():
+        try:
+            llm.warm()
+        except Exception as exc:
+            print(f"  [brain] couldn't preload the model: {exc}")
+    if hasattr(llm, "warm"):
+        threading.Thread(target=go, daemon=True, name="warm-up").start()
+
+
 def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
+    warm_up(llm)
     closers = add_features(bot, cfg, llm)
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)

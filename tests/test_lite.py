@@ -216,3 +216,16 @@ def test_build_transcriber_without_key_stays_local(monkeypatch):
     assert stt.build_transcriber(_merge(DEFAULTS["stt"], {"provider": "cloud"})) == "local"
     monkeypatch.setenv("GROQ_API_KEY", "k")
     assert isinstance(stt.build_transcriber(_merge(DEFAULTS["stt"], {"provider": "cloud"})), stt.CloudTranscriber)
+
+
+def test_warm_up_loads_the_local_model_only_when_it_will_be_used():
+    from jarvis.llm import OllamaClient
+
+    posted = []
+    local = OllamaClient("http://x", "llama3.2:1b", keep_alive="30m")
+    local._post = lambda path, payload, stream=False: posted.append((path, payload))
+    local.warm()
+    assert posted == [("/api/generate", {"model": "llama3.2:1b", "keep_alive": "30m"})]
+    posted.clear()
+    HybridLLM(local, object(), log=lambda m: None).warm()  # cloud answers, so don't fill RAM
+    assert posted == []
