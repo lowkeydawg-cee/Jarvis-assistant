@@ -1,5 +1,7 @@
 """Download the Kokoro voice model into ./voices (a far more natural voice than Piper).
 
+Install the package first:  pip install -e ".[kokoro]"
+
 Usage:
     python scripts/download_kokoro.py          # int8 model, about 90 MB, fastest on a CPU
     python scripts/download_kokoro.py full     # full-precision model, about 310 MB

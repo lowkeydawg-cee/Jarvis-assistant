@@ -23,6 +23,10 @@ voice = [
     "sounddevice>=0.4.6",
     "numpy>=1.24",
 ]
+# A far more natural voice (tts.engine: kokoro). Then: python scripts/download_kokoro.py
+kokoro = [
+    "kokoro-onnx>=0.4",
+]
 # Optional "Hey Jarvis" wake word.
 wake = [
     "openwakeword>=0.6",
