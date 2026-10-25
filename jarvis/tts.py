@@ -44,6 +44,42 @@ class PiperVoice:
         self._stopped = True
 
 
+class KokoroVoice(PiperVoice):
+    """Kokoro: much more natural than Piper. Needs a decent CPU to keep up in real time.
+
+    On a slow laptop it takes about 1.5x the speech length to synthesize, so there are
+    short pauses between sentences; Piper or the browser app's voices are faster there.
+    """
+
+    def __init__(self, cfg: dict):
+        from kokoro_onnx import Kokoro
+        import sounddevice as sd
+
+        model, voices = Path(cfg["kokoro_model"]), Path(cfg["kokoro_voices"])
+        if not model.is_file() or not voices.is_file():
+            raise FileNotFoundError(
+                f"Kokoro files not found ({model}, {voices}). Run 'python scripts/download_kokoro.py' first."
+            )
+        self.sd = sd
+        self.kokoro = Kokoro(str(model), str(voices))
+        self.voice_name = cfg.get("kokoro_voice", "bm_george")
+        self.speed = float(cfg.get("speed", 1.1))
+        self.lang = cfg.get("kokoro_lang", "en-gb")
+        self.rate = 24000
+        self._stopped = False
+
+    def synthesize(self, text: str) -> np.ndarray:
+        samples, self.rate = self.kokoro.create(text, voice=self.voice_name, speed=self.speed, lang=self.lang)
+        return (np.clip(samples, -1, 1) * 32767).astype(np.int16)
+
+
+def build_voice(cfg: dict):
+    """tts.engine: piper (default, fast) or kokoro (natural, heavier)."""
+    if str(cfg.get("engine", "piper")).lower() == "kokoro":
+        return KokoroVoice(cfg)
+    return PiperVoice(cfg)
+
+
 class PrintVoice:
     """Text mode: the Speaker prints each sentence, nothing is played."""
 

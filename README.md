@@ -183,6 +183,7 @@ jarvis --briefing          # get the daily briefing right away
 jarvis --text              # type instead of talk, handy for testing
 jarvis --web               # the browser app
 jarvis --local             # never use the cloud model
+jarvis --mic-test          # check what Jarvis hears: levels, speech detection, transcript
 ```
 
 To have it start when you sign in to Windows:
@@ -219,16 +220,27 @@ pytest
 
 The tests cover the command policy, sentence streaming and code-block skipping, the speaker's interrupt handling, Silero VAD, the full tool-call loop, the inbox and hotkey flow, incremental indexing and semantic search, screenshot downscaling, every watcher, quiet hours, and a real MCP server started over stdio. None of them need Ollama, a mic, or downloaded models.
 
+## Running well on a modest laptop
+
+Measured on an 8 GB laptop with Intel UHD 620 graphics and no GPU, a 3B model reads about 19 tokens a second, and Jarvis's full prompt is about 1,700 tokens, so every question waited about 90 seconds before the first word. Lite mode attacks that cost directly:
+
+| Change | Setting | Effect on that laptop |
+|---|---|---|
+| Instant answers for common requests | `router.enabled: true` (default) | time, battery, disk, "brief me": under 1 s; notes search: about 3 s |
+| Short prompt, no tools for the local model | `llm.local_tools: false` | open questions: 5 to 25 s instead of about 60 s, and no rambling about tools |
+| Cloud brain with local fallback | `llm.provider: hybrid` and a `GROQ_API_KEY` | open questions in about 1 s ([key setup](docs/SETUP-KEYS.md)) |
+| Cloud speech to text | `stt.provider: cloud` | about 1 s per sentence, better accuracy |
+| Natural voice | `tts.engine: kokoro` | much more lifelike; about 1.5x slower than real time on that CPU, so best on faster machines |
+
+If Jarvis never gets past `[listening]`, run `jarvis --mic-test`. It lists your microphones, shows a live level meter, and tells you in plain words whether the mic is silent, too quiet, or fine.
+
 ## Status
 
 Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback.
 
 ## Ideas for next steps
 
-- Echo cancellation so barge-in works on laptop speakers.
-- A small tray app showing the live transcript and what Jarvis is doing.
-- Hybrid search (keyword plus vector) and reranking for the second brain.
-- Recurring calendar events, and pulling the calendar straight from an MCP server.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what's missing, ranked by urgency.
 
 ## License
 

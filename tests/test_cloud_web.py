@@ -216,12 +216,12 @@ def test_web_chat_streams_sentences_back(web):
     session, base = web([{"role": "assistant", "content": "All good. Disk has plenty of room."}])
     ev = Events(base)
     time.sleep(0.1)
-    call(base, "/api/chat", {"text": "how's my disk"})
+    call(base, "/api/chat", {"text": "is my laptop healthy"})
     ev.wait_for(lambda e: e.get("text") == "All good.")
     ev.wait_for(lambda e: e.get("text") == "Disk has plenty of room.")
     done = ev.wait_for(lambda e: e.get("type") == "state" and e["state"] == "idle")
     assert done["provider"] == "cloud"
-    assert session.bot.history[0] == {"role": "user", "content": "how's my disk"}
+    assert session.bot.history[0] == {"role": "user", "content": "is my laptop healthy"}
 
 
 def test_web_asks_before_running_a_command(web, monkeypatch):

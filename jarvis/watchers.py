@@ -163,7 +163,8 @@ def git_summary(repos: list[str]) -> list[str]:
         branch = rows[0].removeprefix("## ").split("...")[0] if rows else "unknown"
         dirty = len(rows) - 1
         ahead = re.search(r"ahead (\d+)", rows[0]) if rows else None
-        note = f"{Path(path).name} on {branch}: {dirty} uncommitted changes"
+        changes = "no uncommitted changes" if dirty == 0 else f"{dirty} uncommitted change{'s' if dirty != 1 else ''}"
+        note = f"{Path(path).name} on {branch}: {changes}"
         if ahead:
             note += f", {ahead.group(1)} commits not pushed"
         lines.append(note)

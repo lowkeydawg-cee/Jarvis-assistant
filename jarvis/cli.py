@@ -45,6 +45,10 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             },
             handler=lambda a: brain.answer_context(str(a.get("query", "")), k=k),
         ))
+        if bot.router:
+            from jarvis.router import add_notes_route
+
+            add_notes_route(bot.router, brain.search)
         if cfg["brain"].get("reindex_on_start", True) and cfg["brain"]["folders"]:
             threading.Thread(
                 target=brain.index, args=(cfg["brain"]["folders"],), daemon=True, name="brain-index"
@@ -83,6 +87,10 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             description="Get today's facts for a briefing: meetings, git repos, disk. Use for 'brief me' or 'what's my day'.",
             handler=lambda a: briefing_facts(cfg["proactive"]),
         ))
+        if bot.router:
+            from jarvis.router import BRIEFING_PATTERN, briefing_route
+
+            bot.router.add("briefing", BRIEFING_PATTERN, briefing_route(lambda: briefing_facts(cfg["proactive"])))
 
     servers = cfg["mcp"].get("servers") or {}
     if servers:
@@ -118,6 +126,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--web", action="store_true", help="Run Jarvis in your browser (recommended on modest laptops)")
     parser.add_argument("--port", type=int, help="Port for --web (default 8765)")
     parser.add_argument("--local", action="store_true", help="Keep all thinking on this computer (no cloud model)")
+    parser.add_argument("--mic-test", action="store_true", help="Check your microphone: levels, speech detection, transcript")
     parser.add_argument("--wake", action="store_true", help="Wait for 'Hey Jarvis' before each request")
     parser.add_argument("--barge-in", action="store_true", help="Let yourself interrupt Jarvis (use headphones)")
     parser.add_argument("--index", nargs="*", metavar="FOLDER",
@@ -136,6 +145,11 @@ def main(argv: list[str] | None = None) -> None:
         cfg["voice"]["barge_in"] = True
     if args.local:
         cfg["llm"]["provider"] = "local"
+    if args.mic_test:
+        from jarvis import mictest
+
+        mictest.run(cfg)
+        return
 
     try:
         llm = build_llm(cfg)
@@ -166,8 +180,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.text:
         if args.speak:
-            from jarvis.tts import PiperVoice
-            speaker = Speaker(PiperVoice(cfg["tts"]))
+            from jarvis.tts import build_voice
+            speaker = Speaker(build_voice(cfg["tts"]))
         else:
             from jarvis.tts import PrintVoice
             speaker = Speaker(PrintVoice())
@@ -181,15 +195,15 @@ def main(argv: list[str] | None = None) -> None:
 
     print("Loading speech models, one moment...")
     from jarvis.audio import Microphone
-    from jarvis.stt import Transcriber
-    from jarvis.tts import PiperVoice
+    from jarvis.stt import build_transcriber
+    from jarvis.tts import build_voice
     from jarvis.voice import BargeIn, Vad
 
     vad = Vad(threshold=float(cfg["voice"]["vad_threshold"]))
     mic = Microphone(cfg["audio"], vad=vad)
-    ears = Transcriber(cfg["stt"])
+    ears = build_transcriber(cfg["stt"])
     barge = BargeIn(mic, vad, int(cfg["voice"]["barge_in_min_ms"])) if cfg["voice"]["barge_in"] else None
-    speaker = Speaker(PiperVoice(cfg["tts"]), barge_in=barge)
+    speaker = Speaker(build_voice(cfg["tts"]), barge_in=barge)
     bot: Assistant
 
     def listen() -> str:

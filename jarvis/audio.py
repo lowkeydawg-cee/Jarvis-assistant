@@ -28,7 +28,7 @@ class Microphone:
         self._lock = threading.Lock()
         self.stream = sd.InputStream(
             samplerate=self.rate, channels=1, dtype="float32", blocksize=self.block,
-            callback=self._on_audio,
+            callback=self._on_audio, device=cfg.get("device"),
         )
         self.stream.start()
 
@@ -71,6 +71,8 @@ class Microphone:
         `prefix` is audio already heard (from a barge-in), so recording starts
         as if speech is in progress. Setting `stop` ends recording early.
         """
+        if self.vad is not None and hasattr(self.vad, "reset"):
+            self.vad.reset()  # don't let the end of Jarvis's own reply count as you talking
         chunks: list[np.ndarray] = [prefix] if prefix is not None and prefix.size else []
         started = bool(chunks)
         quiet, waited = 0, 0

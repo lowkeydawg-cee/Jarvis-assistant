@@ -159,8 +159,9 @@ class HybridLLM:
     """
 
     def __init__(self, local: OllamaClient, cloud: OpenAICompatClient | None, private: bool = False,
-                 log: Callable[[str], None] = print):
+                 log: Callable[[str], None] = print, local_tools: bool = True):
         self.local = local
+        self.local_tools = local_tools
         self.cloud = cloud
         self.private = private
         self.log = log
@@ -208,6 +209,13 @@ class HybridLLM:
                 if started:
                     raise  # half a reply was already spoken; don't start over in another voice
                 self.log(f"  [hybrid] cloud failed, using local model: {exc}")
+        if not self.local_tools:
+            # Without tools, the full persona (all about tools) only slows a small model and confuses it.
+            from jarvis.persona import lite_system_prompt
+
+            if messages and messages[0].get("role") == "system":
+                messages = [{"role": "system", "content": lite_system_prompt()}, *messages[1:]]
+            tools = None
         msg = self.local.chat_stream(messages, tools, on_text)
         self.last_provider = "local"
         return msg
@@ -224,15 +232,16 @@ def build_llm(cfg: dict, log: Callable[[str], None] = print):
     c = cfg["llm"]
     local = OllamaClient(c["host"], c["model"], c["temperature"], timeout=int(c.get("timeout", 300)))
     provider = str(c.get("provider", "hybrid")).lower()
+    local_tools = bool(c.get("local_tools", True))
     if provider == "local":
-        return local
+        return local if local_tools else HybridLLM(local, None, log=log, local_tools=False)
     cc = c.get("cloud") or {}
     key = cc.get("api_key") or os.environ.get(cc.get("api_key_env") or "", "")
     if not key:
         if provider == "cloud":
             raise CloudError(f"No API key. Set {cc.get('api_key_env') or 'llm.cloud.api_key'} and try again.")
         log(f"  [hybrid] no {cc.get('api_key_env') or 'API key'} set, so everything runs locally")
-        return HybridLLM(local, None, log=log)
+        return HybridLLM(local, None, log=log, local_tools=local_tools)
     cloud = OpenAICompatClient(cc["base_url"], key, cc["model"], c["temperature"],
                                timeout=int(cc.get("timeout", 60)))
-    return HybridLLM(local, cloud, private=bool(c.get("private", False)), log=log)
+    return HybridLLM(local, cloud, private=bool(c.get("private", False)), log=log, local_tools=local_tools)

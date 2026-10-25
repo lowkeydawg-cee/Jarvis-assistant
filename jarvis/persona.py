@@ -26,6 +26,17 @@ Tools whose names contain two underscores come from connected services such as g
 Messages that start with "I pressed the screen hotkey" or ask for a briefing come from automation, so answer them directly without asking follow up questions."""
 
 
+# For a small local model with no tools: short, so it's read fast, and with no
+# mention of tools or automation it might imitate.
+LITE_PERSONA = """You are Jarvis, a helpful voice assistant on the user's computer.
+Answer in one to three short, plain sentences that sound natural read aloud.
+No markdown, lists, symbols or code. If you don't know, say so."""
+
+
+def lite_system_prompt() -> str:
+    return f"{LITE_PERSONA}\nIt is {datetime.now():%A %d %B %Y, %H:%M}."
+
+
 def system_prompt() -> str:
     """Persona plus a little live context about the machine."""
     now = datetime.now().strftime("%A %d %B %Y, %H:%M")
@@ -33,9 +44,11 @@ def system_prompt() -> str:
     return f"{PERSONA}\n\nContext: the current time is {now}. The operating system is {os_name}."
 
 
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_URL = re.compile(r"https?://\S+")
 _FENCE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE = re.compile(r"`([^`]*)`")
-_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_LINK = re.compile(r"\[([^\]]*)\]\([^)]+\)")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _BULLET = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+", re.MULTILINE)
 _EMPHASIS = re.compile(r"(\*{1,3}|_{1,3}|~~)(\S.*?\S|\S)\1")
@@ -50,7 +63,9 @@ def speakable(text: str) -> str:
     safety net between the LLM and the voice.
     """
     text = _FENCE.sub(" I've left the code on screen. ", text)
+    text = _IMAGE.sub("", text)
     text = _LINK.sub(r"\1", text)
+    text = _URL.sub("", text)
     text = _INLINE_CODE.sub(r"\1", text)
     text = _HEADING.sub("", text)
     text = _BULLET.sub("", text)

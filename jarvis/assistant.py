@@ -15,6 +15,7 @@ import threading
 from typing import Callable
 
 from jarvis.persona import system_prompt
+from jarvis.router import Router
 from jarvis.streaming import SentenceStream
 from jarvis.tools import ToolBox
 
@@ -46,6 +47,8 @@ class Assistant:
         self.attention = threading.Event()
         self.screen = None  # set by the CLI when vision is enabled
         self.on_error: Callable[[Exception], None] | None = None
+        # Instant answers for common requests, so they never wait on the model.
+        self.router = Router() if cfg.get("router", {}).get("enabled", True) else None
 
     # ---- inbox -----------------------------------------------------------
 
@@ -95,6 +98,13 @@ class Assistant:
     def respond(self, user_text: str) -> str:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
         self.history.append({"role": "user", "content": user_text})
+        hit = self.router.answer(user_text) if self.router else None
+        if hit:
+            name, reply = hit
+            print(f"  [instant] {name}")
+            self.history.append({"role": "assistant", "content": reply})
+            self.speaker.say(reply)
+            return reply
         tools = self.toolbox.specs() if self.tools_enabled else None
         spoken: list[str] = []
 
