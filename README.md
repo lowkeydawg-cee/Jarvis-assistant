@@ -32,6 +32,9 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Screen vision | A hotkey or "look at my screen" sends a screenshot to a local vision model. | mss, Qwen2.5-VL or LLaVA |
 | Proactive mode | Battery, disk, meeting and build-log watchers, plus a daily briefing, with quiet hours. | psutil, icalendar |
 | Safe actions | Allowlisted shell commands with spoken confirmation, and per-server confirmation for MCP tools. | Pure-Python policy, fully tested |
+| Reminders and schedule | "Remind me to call mum at 5", "every weekday at 8", "what's on my schedule today", snooze. Speaks up and pops a desktop notification when one is due, and catches up on ones missed while it was off. | Own time parser, JSON store, no model needed |
+| Memory | "Remember that my standup is at 10:30." Facts persist across restarts and are given to the model in every conversation. | JSON store |
+| Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
 

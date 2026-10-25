@@ -27,6 +27,7 @@ from jarvis import __version__
 from jarvis.assistant import Assistant
 
 CONFIRM_TIMEOUT = 60
+MAX_BODY = 4_000_000  # about 40 seconds of 16 kHz audio, base64-encoded
 
 
 class EventHub:
@@ -102,7 +103,15 @@ class WebSession:
         self.confirming = threading.Event()
         self.bot = Assistant(llm, self.speaker, self._listen, cfg)
         self.bot.on_error = self._on_error
+        self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
+        self.skills = None  # jarvis.skills.Skills when reminders are on
         self._worker = threading.Thread(target=self._work, daemon=True, name="jarvis-web")
+
+    def attach_skills(self, skills) -> None:
+        """Show reminders in the page: refresh the list on changes, and pop a notification when one fires."""
+        self.skills = skills
+        skills.store.on_change = lambda: self.hub.publish({"type": "reminders"})
+        self.bot.on_reminder = lambda r, text: self.hub.publish({"type": "reminder", "title": r.text, "text": text})
 
     def start(self) -> None:
         self._worker.start()
@@ -129,22 +138,50 @@ class WebSession:
         while True:
             self.bot.attention.wait()
             self.hub.publish({"type": "state", "state": "thinking"})
+            self.bot.last_source = ""  # stays empty for announcements such as reminders
             self.bot.drain_inbox()
-            self.hub.publish({
-                "type": "state", "state": "idle",
-                "provider": self.bot.last_source or getattr(self.llm, "last_provider", "") or "local",
-            })
+            self.hub.publish({"type": "state", "state": "idle", "provider": self.bot.last_source})
 
     # ---- actions from the browser ----------------------------------------
 
-    def chat(self, text: str) -> None:
+    def chat(self, text: str, audio_b64: str = "") -> None:
         text = text.strip()
         if not text:
             return
         if self.confirming.is_set():
             self.answers.put(text)  # "yes" or "no" to a pending question
-        else:
-            self.bot.post("ask", text)
+            return
+        self.bot.post("ask", text, self.check_voice(audio_b64))
+
+    def check_voice(self, audio_b64: str) -> dict | None:
+        """Who said it, from the recording of the spoken message. None when it can't be checked."""
+        if not audio_b64 or self.voice is None or not self.voice.enrolled:
+            return None
+        from jarvis.voiceid import decode_pcm16
+
+        try:
+            owner, score = self.voice.identify(decode_pcm16(audio_b64))
+        except Exception as exc:  # too short, model missing: answer normally rather than fail
+            print(f"  [voice] couldn't check the voice: {exc}")
+            return None
+        result = {"owner": owner, "score": round(score, 2), "name": self.voice.name if owner else ""}
+        self.hub.publish({"type": "speaker", **result})
+        return result
+
+    def enroll(self, name: str, clips: list[str]) -> dict:
+        from jarvis.voiceid import decode_pcm16
+
+        quality = self.voice.enroll([decode_pcm16(c) for c in clips], name)
+        self.bot.owner_name = self.voice.name
+        return {"ok": True, "name": self.voice.name, "quality": round(quality, 2)}
+
+    def reminders(self) -> list[dict]:
+        if self.skills is None:
+            return []
+        from jarvis.reminders import when_text
+
+        return [{"id": r.id, "text": r.text, "due": r.due, "kind": r.kind, "repeat": r.repeat,
+                 "when": when_text(r.when, repeat=r.repeat)} for r in self.skills.store.upcoming()[:20]]
 
     def confirm(self, answer: str) -> None:
         self.answers.put(answer)
@@ -157,6 +194,10 @@ class WebSession:
             "cloud": bool(getattr(llm, "cloud", None)),
             "private": bool(getattr(llm, "private", True)),
             "tools": sorted(self.bot.toolbox.tools),
+            "owner": self.bot.owner_name,
+            "voice": {"available": self.voice is not None,
+                      "enrolled": bool(self.voice and self.voice.enrolled)},
+            "reminders": self.skills is not None,
         }
 
     def set_private(self, value: bool) -> None:
@@ -202,6 +243,8 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._send(200, page(), "text/html; charset=utf-8")
             if path == "/api/status":
                 return self._json(session.status())
+            if path == "/api/reminders":
+                return self._json({"reminders": session.reminders()})
             if path == "/api/events":
                 return self._events()
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -210,13 +253,30 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             if not self._trusted():
                 return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
             try:
-                length = min(int(self.headers.get("Content-Length") or 0), 64_000)
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > MAX_BODY:  # spoken messages carry a few seconds of audio; enrolment a few more
+                    return self._json({"error": "too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 body = json.loads(self.rfile.read(length) or b"{}")
             except (ValueError, json.JSONDecodeError):
                 return self._json({"error": "bad json"}, HTTPStatus.BAD_REQUEST)
             path = urlsplit(self.path).path
             if path == "/api/chat":
-                session.chat(str(body.get("text", "")))
+                session.chat(str(body.get("text", "")), str(body.get("audio") or ""))
+            elif path == "/api/voice/enroll":
+                if session.voice is None:
+                    return self._json({"error": "Voice recognition isn't set up. Run "
+                                                "python scripts/download_speaker_model.py"}, HTTPStatus.CONFLICT)
+                try:
+                    return self._json(session.enroll(str(body.get("name", "")), list(body.get("clips") or [])))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            elif path == "/api/voice/forget":
+                if session.voice is not None:
+                    session.voice.forget()
+                    session.bot.owner_name = session.cfg["user"].get("name", "")
+            elif path == "/api/reminders/delete":
+                if session.skills is not None:
+                    session.skills.store.remove(str(body.get("id", "")))
             elif path == "/api/confirm":
                 session.confirm(str(body.get("answer", "")))
             elif path == "/api/interrupt":

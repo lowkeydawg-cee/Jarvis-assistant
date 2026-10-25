@@ -164,6 +164,44 @@
   #elsewhere h2 { font-size: 20px; margin: 0 0 6px; }
   #elsewhere p { color: var(--muted); margin: 0 0 18px; }
 
+  /* ---------- who spoke ---------- */
+  .you .who { display: block; margin-top: 3px; font: 11px var(--mono); color: var(--faint); text-align: right; }
+  .you.owner .who { color: #7fae6e; }
+  .you.stranger .who { color: var(--danger); }
+
+  /* ---------- reminders ---------- */
+  .alert {
+    border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius);
+    padding: 12px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .alert strong { flex: 1; min-width: 160px; font-weight: 600; }
+  .alert .eyebrow { display: block; font: 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  #upnext { margin: 0 0 26px; }
+  #upnext h2 { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 500; }
+  #upnext ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #upnext li { display: flex; align-items: baseline; gap: 10px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  #upnext .when { font: 12px var(--mono); color: var(--accent); white-space: nowrap; }
+  #upnext .what { flex: 1; font-size: 14px; }
+  #upnext button { color: var(--faint); font-size: 18px; line-height: 1; padding: 0 4px; }
+  #upnext button:hover { color: var(--danger); }
+  #upnext .empty { color: var(--faint); font-size: 14px; }
+  @media (min-width: 1180px) {
+    #upnext { position: fixed; top: 84px; right: max(24px, calc((100vw - 720px) / 2 - 300px)); width: 260px; }
+  }
+  .banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; color: var(--muted);
+    border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+  .banner span { flex: 1; min-width: 180px; }
+
+  /* ---------- voice enrolment ---------- */
+  .enroll { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; }
+  .enroll input[type=text] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; font-size: 14px; }
+  .enroll .sentence { font-size: 16px; line-height: 1.45; padding: 10px 12px; background: var(--raised); border-radius: 8px; }
+  .enroll .steps { display: flex; gap: 6px; }
+  .enroll .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+  .enroll .steps i.done { background: var(--accent); }
+  .enroll .rec.on { background: var(--danger); color: #fff; }
+  .badge-ok { color: #7fae6e; font-size: 14px; }
+
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   @media (max-width: 520px) {
     .welcome h1 { font-size: 24px; }
@@ -184,13 +222,22 @@
 
 <main id="scroller">
   <div class="wrap">
+    <aside id="upnext" hidden aria-label="Up next">
+      <h2>Up next</h2>
+      <ul id="upnextList"></ul>
+      <div class="banner" id="notifyBanner" hidden>
+        <span>Let reminders pop up even when this tab is in the background.</span>
+        <button class="secondary" id="notifyBtn" type="button">Allow notifications</button>
+      </div>
+    </aside>
     <section class="welcome" id="welcome">
-      <h1>Press Space and talk.</h1>
-      <p>Or click the microphone, or type below. A few things to try:</p>
+      <h1 id="greeting">Press Space and talk.</h1>
+      <p>Press Space or click the microphone and talk, or type below. A few things to try:</p>
       <div class="chips">
-        <button class="chip">What time is it?</button>
         <button class="chip">Brief me</button>
-        <button class="chip">How's my battery?</button>
+        <button class="chip">Remind me in 10 minutes to stretch</button>
+        <button class="chip">What's on my schedule today?</button>
+        <button class="chip">Remember that my standup is at 10</button>
         <button class="chip">Where did I write about the catalog agent?</button>
       </div>
       <div class="voices" id="voicePick" hidden>
@@ -228,6 +275,21 @@
       <select id="voice"></select>
       <p class="note" id="voiceTip"></p>
       <button class="secondary" id="testVoice" type="button">Play a sample</button>
+    </div>
+    <div class="field" id="voiceIdField">
+      <span class="label">Recognise my voice</span>
+      <div class="enroll" id="enroll">
+        <p class="note" id="enrollIntro">Read three short sentences so Jarvis knows your voice. It then greets you by name
+          and keeps your notes, schedule and memories private from other voices. Only a voiceprint is saved, on this computer.</p>
+        <input type="text" id="enrollName" placeholder="Your name" aria-label="Your name" maxlength="40">
+        <div class="steps" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="sentence" id="enrollSentence" hidden></div>
+        <div class="row">
+          <button class="primary rec" id="enrollBtn" type="button">Start</button>
+          <button class="secondary" id="forgetVoice" type="button" hidden>Forget my voice</button>
+        </div>
+        <p class="note" id="enrollMsg" aria-live="polite"></p>
+      </div>
     </div>
     <div class="field">
       <label for="rate">Speaking speed <span id="rateVal"></span></label>
@@ -403,69 +465,117 @@
     if (confirming || prefs.handsfree) setTimeout(() => { if (!speechSynthesis.speaking && !queue.length) startListening(); }, 250);
   }
 
-  // ---------- voice in, with a live level meter ----------
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognizer = null, bargeMode = false, meterStream = null, meterRaf = 0;
+  // ---------- microphone: live level meter, and a recording for voice recognition ----------
   const bars = [...document.querySelectorAll(".meter i")];
-  async function startMeter() {
+  const mic = { stream: null, ctx: null, raf: 0, chunks: [], rate: 48000, recording: false };
+  async function openMic(record) {
+    closeMic();
     try {
-      meterStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const ctx = new AudioContext();
-      const an = ctx.createAnalyser(); an.fftSize = 512;
-      ctx.createMediaStreamSource(meterStream).connect(an);
+      mic.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      mic.ctx = new AudioContext();
+      mic.rate = mic.ctx.sampleRate;
+      const src = mic.ctx.createMediaStreamSource(mic.stream);
+      const an = mic.ctx.createAnalyser(); an.fftSize = 512; src.connect(an);
+      mic.chunks = []; mic.recording = record;
+      if (record) {
+        const proc = mic.ctx.createScriptProcessor(4096, 1, 1);
+        proc.onaudioprocess = (e) => { if (mic.recording) mic.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+        src.connect(proc); proc.connect(mic.ctx.destination);
+      }
       const data = new Uint8Array(an.fftSize);
       const tick = () => {
         an.getByteTimeDomainData(data);
         let sum = 0; for (const x of data) sum += (x - 128) ** 2;
         const level = Math.min(1, Math.sqrt(sum / data.length) / 30);
         bars.forEach((b, i) => (b.style.height = 3 + Math.max(0, level * 14 - Math.abs(i - 2) * 2.5) + "px"));
-        meterRaf = requestAnimationFrame(tick);
+        mic.raf = requestAnimationFrame(tick);
       };
-      meterStream.ctx = ctx; tick();
-    } catch { /* the meter is a nicety; listening still works without it */ }
+      tick();
+      return true;
+    } catch { return false; /* the meter is a nicety; listening still works without it */ }
   }
-  function stopMeter() {
-    cancelAnimationFrame(meterRaf);
-    if (meterStream) { meterStream.getTracks().forEach((t) => t.stop()); meterStream.ctx && meterStream.ctx.close(); meterStream = null; }
+  function closeMic() {
+    cancelAnimationFrame(mic.raf);
+    if (mic.stream) mic.stream.getTracks().forEach((t) => t.stop());
+    if (mic.ctx) mic.ctx.close();
+    mic.stream = mic.ctx = null; mic.recording = false;
     bars.forEach((b) => (b.style.height = ""));
+  }
+  // What was recorded, as 16 kHz 16-bit PCM in base64 (what the server's voice check reads).
+  function takeAudio(maxSeconds = 12) {
+    const total = mic.chunks.reduce((n, c) => n + c.length, 0);
+    if (!total) return "";
+    const all = new Float32Array(total); let o = 0;
+    for (const c of mic.chunks) { all.set(c, o); o += c.length; }
+    mic.chunks = [];
+    const step = mic.rate / 16000, n = Math.min(Math.floor(total / step), 16000 * maxSeconds);
+    const pcm = new Int16Array(n);
+    for (let i = 0; i < n; i++) pcm[i] = Math.max(-1, Math.min(1, all[Math.floor(i * step)])) * 32767;
+    let bin = ""; const bytes = new Uint8Array(pcm.buffer);
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  // ---------- voice in ----------
+  // Keep listening through short pauses and send once you've been quiet for a moment, so one
+  // sentence with a breath in the middle isn't split into two messages.
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const PAUSE_MS = 1300;
+  let recognizer = null, bargeMode = false, heard = "", pauseTimer = 0;
+  function finishHearing() {
+    clearTimeout(pauseTimer);
+    const text = heard.trim(); heard = "";
+    if (recognizer && listening) recognizer.stop();
+    $("text").placeholder = "Ask Jarvis anything";
+    if (text) send(text, status.voice && status.voice.enrolled ? takeAudio() : "");
   }
   if (SR) {
     recognizer = new SR();
     recognizer.lang = "en-US";
     recognizer.interimResults = true;
-    recognizer.continuous = false;
+    recognizer.continuous = true;
     recognizer.onresult = (e) => {
-      let interim = "", final = "";
+      let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        (r.isFinal ? (final += r[0].transcript) : (interim += r[0].transcript));
+        if (r.isFinal) heard += " " + r[0].transcript; else interim += r[0].transcript;
       }
-      if (bargeMode && (interim + final).trim().split(/\s+/).length >= 2 && (speechSynthesis.speaking || queue.length)) {
+      if (bargeMode && (heard + interim).trim().split(/\s+/).length >= 2 && (speechSynthesis.speaking || queue.length)) {
         stopSpeaking(true);
       }
-      $("text").placeholder = interim || "Listening…";
-      if (final.trim()) { $("text").placeholder = "Ask Jarvis anything"; send(final.trim()); }
+      $("text").placeholder = (heard + " " + interim).trim() || "Listening…";
+      clearTimeout(pauseTimer);
+      pauseTimer = setTimeout(finishHearing, PAUSE_MS);
     };
-    recognizer.onend = () => { listening = false; bargeMode = false; stopMeter(); $("text").placeholder = "Ask Jarvis anything"; render(); };
+    recognizer.onend = () => {
+      listening = false; bargeMode = false;
+      if (heard.trim()) finishHearing();
+      closeMic(); $("text").placeholder = "Ask Jarvis anything"; render();
+    };
     recognizer.onerror = (e) => {
-      listening = false; stopMeter(); render();
+      listening = false; closeMic(); render();
       if (e.error === "not-allowed" || e.error === "service-not-allowed") note("The microphone is blocked. Allow it from the icon at the left of the address bar.", true);
       else if (e.error === "network") note("Listening needs an internet connection in this browser. You can still type.", true);
       else if (e.error === "no-speech") note("I didn't hear anything. Check the meter moves when you talk, or run jarvis --mic-test.");
     };
   }
   function startListening(barge = false) {
-    if (!active) return;
+    if (!active || enrolling) return;
     if (!recognizer) { note("This browser can't listen. Use Edge or Chrome, or type instead."); return; }
     if (listening) return;
     if (!barge) stopSpeaking(true);
-    bargeMode = barge;
-    try { recognizer.start(); listening = true; if (!barge) startMeter(); } catch {}
+    bargeMode = barge; heard = "";
+    try { recognizer.start(); listening = true; if (!barge) openMic(Boolean(status.voice && status.voice.enrolled)); } catch {}
     render();
   }
-  function stopListening() { if (recognizer && listening) recognizer.abort(); listening = false; stopMeter(); render(); }
+  function stopListening() {
+    clearTimeout(pauseTimer);
+    if (recognizer && listening) { if (heard.trim()) { finishHearing(); return; } recognizer.abort(); }
+    listening = false; closeMic(); render();
+  }
 
   // ---------- server ----------
+  let status = {};
   async function post(path, body = {}) {
     try {
       const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -474,15 +584,22 @@
       return data;
     } catch { note("Can't reach Jarvis. Is its window still open?", true); }
   }
-  function send(text) {
+  function send(text, audio = "") {
     if (!text || !active) return;
     add("you", text);
     current = null;
     if (confirming) { post("/api/confirm", { answer: text }); return; }
     thinking = true; sentAt = performance.now(); firstWordAt = 0; render();
-    post("/api/chat", { text });
+    post("/api/chat", audio ? { text, audio } : { text });
+  }
+  function greet() {
+    const h = new Date().getHours();
+    const part = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+    $("greeting").textContent = status.owner ? `${part}, ${status.owner}.` : `${part}.`;
   }
   function showBrain(s) {
+    status = s; greet(); showVoiceSetup();
+    if (s.reminders) loadReminders();
     const local = s.private || !s.cloud;
     $("mode").dataset.kind = local ? "local" : "cloud";
     $("modeText").textContent = s.private && s.cloud ? "Private · this laptop" : local ? "Thinking on this laptop" : "Cloud brain";
@@ -521,11 +638,123 @@
         if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
       } else if (ev.type === "confirm_done") {
         confirming = false; const a = document.querySelector(".ask"); a && a.remove(); current = null; render();
+      } else if (ev.type === "speaker") {
+        markSpeaker(ev);
+      } else if (ev.type === "reminder") {
+        showReminder(ev);
+      } else if (ev.type === "reminders") {
+        loadReminders();
       } else if (ev.type === "error") {
         note(ev.text, true);
       }
     };
   }
+
+  // ---------- who spoke ----------
+  function markSpeaker(ev) {
+    const mine = [...document.querySelectorAll(".you")].pop();
+    if (!mine || mine.querySelector(".who")) return;
+    const who = document.createElement("span"); who.className = "who";
+    mine.classList.add(ev.owner ? "owner" : "stranger");
+    who.textContent = ev.owner ? `${ev.name} · voice match ${Math.round(ev.score * 100)}%` : "Voice not recognised";
+    mine.appendChild(who);
+  }
+
+  // ---------- reminders ----------
+  let reminders = [];
+  async function loadReminders() {
+    try { reminders = (await (await fetch("/api/reminders")).json()).reminders || []; } catch { return; }
+    const box = $("upnext"), list = $("upnextList");
+    box.hidden = false;
+    list.innerHTML = "";
+    if (!reminders.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = "Nothing yet. Try “remind me in 10 minutes to stretch”.";
+      list.appendChild(li);
+    }
+    for (const r of reminders.slice(0, 6)) {
+      const li = document.createElement("li");
+      const when = document.createElement("span"); when.className = "when"; when.textContent = r.when;
+      const what = document.createElement("span"); what.className = "what"; what.textContent = r.text;
+      const del = document.createElement("button"); del.type = "button"; del.textContent = "×";
+      del.setAttribute("aria-label", "Remove " + r.text);
+      del.onclick = () => post("/api/reminders/delete", { id: r.id });
+      li.append(when, what, del); list.appendChild(li);
+    }
+    $("notifyBanner").hidden = !(reminders.length && "Notification" in window && Notification.permission === "default");
+  }
+  $("notifyBtn").onclick = () => Notification.requestPermission().then(() => ($("notifyBanner").hidden = true));
+  function showReminder(ev) {
+    $("welcome").hidden = true;
+    const el = document.createElement("div"); el.className = "alert";
+    const body = document.createElement("strong");
+    const eye = document.createElement("span"); eye.className = "eyebrow"; eye.textContent = "Reminder";
+    body.append(eye, document.createTextNode(ev.title));
+    const snooze = document.createElement("button"); snooze.className = "secondary"; snooze.textContent = "Snooze 10 min";
+    snooze.onclick = () => { send("snooze for 10 minutes"); el.remove(); };
+    const done = document.createElement("button"); done.className = "primary"; done.textContent = "Done";
+    done.onclick = () => el.remove();
+    el.append(body, snooze, done); $("log").appendChild(el); scrollDown();
+    if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+      new Notification("Jarvis", { body: ev.title, tag: "jarvis-reminder" });
+    }
+  }
+
+  // ---------- teach Jarvis your voice ----------
+  const SENTENCES = [
+    "Hey Jarvis, what's on my schedule for today, and do I have any meetings?",
+    "Remind me to call my family this evening at seven o'clock.",
+    "The quick brown fox jumps over the lazy dog beside the quiet river.",
+  ];
+  let enrolling = false, enrollStep = -1, clips = [];
+  function showVoiceSetup() {
+    const v = status.voice || {};
+    $("voiceIdField").hidden = !v.available;
+    if (enrolling) return;
+    $("forgetVoice").hidden = !v.enrolled;
+    $("enrollBtn").textContent = v.enrolled ? "Teach it again" : "Start";
+    if (v.enrolled && !$("enrollMsg").textContent) $("enrollMsg").textContent = status.owner ? `Jarvis knows your voice, ${status.owner}.` : "Jarvis knows your voice.";
+    if (status.owner && !$("enrollName").value) $("enrollName").value = status.owner;
+  }
+  function paintSteps() {
+    document.querySelectorAll(".enroll .steps i").forEach((s, i) => s.classList.toggle("done", i < clips.length));
+  }
+  $("enrollBtn").onclick = async () => {
+    const btn = $("enrollBtn");
+    if (!enrolling) {
+      if (!$("enrollName").value.trim()) { $("enrollMsg").textContent = "Type your name first."; $("enrollName").focus(); return; }
+      stopListening(); stopSpeaking(false);
+      enrolling = true; clips = []; enrollStep = 0; paintSteps();
+    }
+    if (mic.recording) {  // finished reading this sentence
+      mic.recording = false;
+      const clip = takeAudio(15); closeMic(); btn.classList.remove("on");
+      if (atob(clip).length < 16000 * 2 * 1.5) { $("enrollMsg").textContent = "That was very short. Read the whole sentence, then press Done."; btn.textContent = "Record again"; return; }
+      clips.push(clip); paintSteps(); enrollStep++;
+      if (enrollStep >= SENTENCES.length) return finishEnroll();
+    }
+    $("enrollSentence").hidden = false;
+    $("enrollSentence").textContent = SENTENCES[enrollStep];
+    if (!(await openMic(true))) { $("enrollMsg").textContent = "Couldn't open the microphone. Allow it from the address bar."; enrolling = false; return; }
+    btn.textContent = "Done"; btn.classList.add("on");
+    $("enrollMsg").textContent = `Sentence ${enrollStep + 1} of ${SENTENCES.length}: read it aloud, then press Done.`;
+  };
+  async function finishEnroll() {
+    $("enrollSentence").hidden = true;
+    $("enrollMsg").textContent = "Learning your voice…";
+    const r = await fetch("/api/voice/enroll", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("enrollName").value.trim(), clips }) }).then((x) => x.json()).catch(() => ({ error: "Couldn't reach Jarvis." }));
+    enrolling = false; clips = []; paintSteps();
+    if (r.error) { $("enrollMsg").textContent = r.error; $("enrollBtn").textContent = "Try again"; return; }
+    $("enrollMsg").textContent = `Done. Jarvis will recognise you, ${r.name}. (Consistency ${Math.round(r.quality * 100)}%.)`;
+    fetch("/api/status").then((x) => x.json()).then(showBrain);
+    speak(`Nice to meet you, ${r.name}. I'll recognise your voice from now on.`);
+  }
+  $("forgetVoice").onclick = async () => {
+    await post("/api/voice/forget");
+    $("enrollMsg").textContent = "Your voiceprint was deleted.";
+    fetch("/api/status").then((x) => x.json()).then(showBrain);
+  };
   function showAsk() {
     const el = document.createElement("div"); el.className = "ask";
     el.innerHTML = '<span>Jarvis wants your OK before it does that.</span>';

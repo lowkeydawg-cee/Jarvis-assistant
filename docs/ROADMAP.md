@@ -23,7 +23,7 @@ vague errors.
 |---|---|---|---|
 | 6 | **Latency log for every turn**: speech-to-text ms, time to the model's first word, voice ms | Without it, nobody can tell which stage is slow. It turns "it's slow" into a number. | S |
 | 7 | **Smarter instant answers**: match by meaning (embeddings) so paraphrases work, plus **your own commands in config.yaml** ("open my project", "start the build") | The router only knows exact phrasings today. Custom commands make Jarvis useful without a model at all. | M |
-| 8 | **Long-term memory**: remember facts you tell it ("my standup is at ten") across restarts | History is lost every time Jarvis closes. | M |
+| 8 | ~~**Long-term memory**~~ Done: "remember that..." persists and reaches the model. Next: keep a summary of past conversations too. | History is lost every time Jarvis closes. | M |
 | 9 | **Treat tool output as untrusted** (notes, files, web pages, MCP results), so text inside a file can't steer Jarvis into running commands | The confirmation step already protects actions, but this closes prompt injection properly before more tools arrive. | M |
 | 10 | **Tests on every push** (GitHub Actions, Windows and Linux) | 58 tests exist but only run by hand. | S |
 
@@ -50,3 +50,6 @@ vague errors.
 - Hybrid brain: Groq in the cloud, with local Ollama as the fallback (v0.3).
 - Browser app with the browser's own speech recognition and voices (v0.3).
 - Lite mode: instant answers, a short local prompt, `--mic-test`, cloud speech to text, and the Kokoro voice.
+- Reminders and a schedule with snooze and desktop notifications; long-term memory.
+- Recognises the owner's voice, and keeps personal answers from other voices.
+- Browser app: one active tab, voice picker, mic meter, "Up next" panel, sentences no longer split at pauses.

@@ -27,6 +27,10 @@ voice = [
 kokoro = [
     "kokoro-onnx>=0.4",
 ]
+# Recognise the owner's voice in the browser app. Then: python scripts/download_speaker_model.py
+voiceid = [
+    "sherpa-onnx>=1.10",
+]
 # Optional "Hey Jarvis" wake word.
 wake = [
     "openwakeword>=0.6",

@@ -41,6 +41,7 @@ class Route:
     name: str
     pattern: re.Pattern
     handler: Handler
+    raw: bool = False  # handler also gets the original words (for times like 18:30 or "5 p.m.")
 
 
 class Router:
@@ -49,9 +50,12 @@ class Router:
         if routes:
             add_builtin_routes(self)
 
-    def add(self, name: str, pattern: str, handler: Handler) -> None:
-        """Register a route. `pattern` must match the entire normalised request."""
-        self.routes.append(Route(name, re.compile(rf"^(?:{pattern})$"), handler))
+    def add(self, name: str, pattern: str, handler: Callable, raw: bool = False) -> None:
+        """Register a route. `pattern` must match the entire normalised request.
+
+        With raw=True the handler is called as handler(match, original_text).
+        """
+        self.routes.append(Route(name, re.compile(rf"^(?:{pattern})$"), handler, raw))
 
     def answer(self, text: str) -> tuple[str, str] | None:
         """Return (route name, spoken reply), or None to let the model answer."""
@@ -63,7 +67,7 @@ class Router:
             if not m:
                 continue
             try:
-                reply = route.handler(m)
+                reply = route.handler(m, text) if route.raw else route.handler(m)
             except Exception as exc:  # a broken shortcut must never break the conversation
                 print(f"  [instant] {route.name} failed, asking the model instead: {exc}")
                 return None

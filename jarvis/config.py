@@ -34,6 +34,20 @@ DEFAULTS: dict[str, Any] = {
     "router": {
         "enabled": True,
     },
+    # Where reminders, memories and the voiceprint are kept.
+    "data_dir": "~/.jarvis",
+    "user": {
+        "name": "",                    # used until you teach Jarvis your voice (which asks your name)
+    },
+    "reminders": {
+        "enabled": True,
+    },
+    # Recognise the owner's voice in the browser app. Needs: python scripts/download_speaker_model.py
+    "voice_id": {
+        "enabled": True,
+        "model": "voices/speaker-id.onnx",
+        "threshold": 0.6,              # 0 to 1: higher is stricter
+    },
     "web": {
         "host": "127.0.0.1",
         "port": 8765,

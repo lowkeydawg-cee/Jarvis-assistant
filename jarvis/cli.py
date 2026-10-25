@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+from pathlib import Path
 
 from jarvis import __version__
 from jarvis.assistant import Assistant
@@ -24,10 +25,45 @@ def build_brain(cfg: dict, llm: OllamaClient):
     )
 
 
+def day_facts(bot: Assistant, cfg: dict) -> str:
+    """Facts for the briefing: the watchers' (time, repos, disk) plus today's schedule."""
+    from jarvis.watchers import briefing_facts
+
+    facts = briefing_facts(cfg["proactive"])
+    if bot.skills is not None:
+        facts += "\n" + bot.skills.schedule("today")
+    return facts
+
+
 def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     """Register second brain, vision, briefing and MCP tools. Returns things to close."""
     closers = []
     box = bot.toolbox
+    data = Path(cfg["data_dir"]).expanduser()
+
+    from jarvis.memory import Memory
+
+    bot.memory = Memory(data / "memory.json")
+    bot.owner_name = bot.owner_name or cfg["user"].get("name", "")
+    if cfg["reminders"]["enabled"]:
+        from jarvis.reminders import ReminderService, ReminderStore, announcement
+        from jarvis.skills import Skills
+
+        store = ReminderStore(data / "reminders.json")
+
+        def fire(r, late):
+            text = announcement(r, late)
+            bot.post("say", text)
+            if bot.on_reminder:
+                bot.on_reminder(r, text)
+
+        service = ReminderService(store, fire)
+        bot.skills = Skills(store, bot.memory, service)
+        if bot.router:
+            bot.skills.add_routes(bot.router)
+        for tool in bot.skills.tools():
+            box.register(tool)
+        service.start()
 
     if cfg["brain"]["enabled"]:
         brain = build_brain(cfg, llm)
@@ -85,12 +121,12 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         box.register(Tool(
             name="daily_briefing",
             description="Get today's facts for a briefing: meetings, git repos, disk. Use for 'brief me' or 'what's my day'.",
-            handler=lambda a: briefing_facts(cfg["proactive"]),
+            handler=lambda a: day_facts(bot, cfg),
         ))
         if bot.router:
             from jarvis.router import BRIEFING_PATTERN, briefing_route
 
-            bot.router.add("briefing", BRIEFING_PATTERN, briefing_route(lambda: briefing_facts(cfg["proactive"])))
+            bot.router.add("briefing", BRIEFING_PATTERN, briefing_route(lambda: day_facts(bot, cfg)))
 
     servers = cfg["mcp"].get("servers") or {}
     if servers:
@@ -111,7 +147,7 @@ def start_watchers(bot: Assistant, cfg: dict) -> None:
 
     def briefing() -> None:
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
-                        "using these facts:\n" + briefing_facts(p))
+                        "using these facts:\n" + day_facts(bot, cfg))
 
     quiet = tuple(p["quiet_hours"]) if p.get("quiet_hours") else None
     Scheduler(build_watchers(p), lambda m: bot.post("say", m), quiet_hours=quiet,
@@ -249,7 +285,7 @@ def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
         from jarvis.watchers import briefing_facts
 
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
-                        "using these facts:\n" + briefing_facts(cfg["proactive"]))
+                        "using these facts:\n" + day_facts(bot, cfg))
     return closers
 
 
@@ -257,7 +293,18 @@ def run_web(cfg: dict, llm, args) -> None:
     from jarvis.server import WebSession, serve
 
     session = WebSession(llm, cfg)
+    v = cfg["voice_id"]
+    if v["enabled"] and Path(v["model"]).is_file():
+        from jarvis.voiceid import VoiceID
+
+        session.voice = VoiceID(v["model"], Path(cfg["data_dir"]).expanduser() / "voiceprint.json",
+                                float(v["threshold"]))
+        session.bot.owner_name = session.voice.name
+    elif v["enabled"]:
+        print("  [voice] to recognise your voice, run: python scripts/download_speaker_model.py")
     closers = start_extras(session.bot, cfg, llm, args)
+    if session.bot.skills is not None:
+        session.attach_skills(session.bot.skills)
     w = cfg["web"]
     try:
         httpd, _ = serve(session, w["host"], args.port or int(w["port"]), bool(w.get("open_browser", True)))
