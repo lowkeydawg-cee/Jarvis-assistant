@@ -25,7 +25,8 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Feature | What it does | Built with |
 |---|---|---|
 | Hybrid brain | Cloud model first for speed, local Ollama as fallback and for private questions. Embeddings and vision always stay local. | Any OpenAI-compatible API (Groq by default), Ollama |
-| Browser app | Orb UI with push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
+| Command center | A side panel in the browser app with live processor, memory, disk and battery, plus a health check that says what's broken and the exact fix. `jarvis --doctor` prints the same check in the terminal. | psutil, Python standard library |
+| Browser app | Push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
 | Streaming voice | Speaks the first sentence while the model is still writing the rest. Optional barge-in lets you interrupt. | Ollama streaming, Piper, Silero VAD |
 | MCP agent | Connects to any Model Context Protocol server (files, git, calendar, browser) and exposes its tools to the model. | `mcp` Python SDK |
 | Second brain | Indexes your notes, PDFs and code locally and answers questions from them, citing the file. | Ollama embeddings, SQLite, NumPy |
@@ -186,6 +187,7 @@ jarvis --briefing          # get the daily briefing right away
 jarvis --text              # type instead of talk, handy for testing
 jarvis --web               # the browser app
 jarvis --local             # never use the cloud model
+jarvis --doctor            # health check with a fix for every problem
 jarvis --mic-test          # check what Jarvis hears: levels, speech detection, transcript
 ```
 
@@ -235,11 +237,13 @@ Measured on an 8 GB laptop with Intel UHD 620 graphics and no GPU, a 3B model re
 | Cloud speech to text | `stt.provider: cloud` | about 1 s per sentence, better accuracy |
 | Natural voice | `tts.engine: kokoro` | much more lifelike; about 1.5x slower than real time on that CPU, so best on faster machines |
 
+If something isn't working, run `jarvis --doctor` first. It checks Python, Ollama and its models, your cloud key, disk space, notes folders and the microphone, and prints a one-line fix for each problem.
+
 If Jarvis never gets past `[listening]`, run `jarvis --mic-test`. It lists your microphones, shows a live level meter, and tells you in plain words whether the mic is silent, too quiet, or fine.
 
 ## Status
 
-Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback.
+Work in progress. On an 8 GB laptop with no GPU, the fully local voice mode was too slow (about a minute per reply) and the mic pickup was unreliable. That is why version 0.3 adds the web app and the hybrid brain: the browser handles listening and speaking, and a cloud model answers in about a second, with Ollama kept as the private fallback. Version 0.4 adds the command center panel, `jarvis --doctor`, and error messages that say what failed and how to fix it.
 
 ## Ideas for next steps
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import queue
 import threading
+import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -106,6 +107,7 @@ class WebSession:
         self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
         self.skills = None  # jarvis.skills.Skills when reminders are on
         self._worker = threading.Thread(target=self._work, daemon=True, name="jarvis-web")
+        self._health: tuple[float, dict] | None = None
 
     def attach_skills(self, skills) -> None:
         """Show reminders in the page: refresh the list on changes, and pop a notification when one fires."""
@@ -131,8 +133,20 @@ class WebSession:
             self.hub.publish({"type": "confirm_done"})
 
     def _on_error(self, exc: Exception) -> None:
-        self.hub.publish({"type": "error", "text": str(exc)})
-        self.speaker.say("Something went wrong on my end. The details are on screen.")
+        from jarvis.errors import explain
+
+        self.hub.publish({"type": "error", "text": explain(exc), "detail": str(exc)[:300]})
+        self.speaker.say(explain(exc))
+
+    def health(self, fresh: bool = False) -> dict:
+        """Health checks for the dashboard, cached for a minute (they make network calls)."""
+        from jarvis.doctor import run_checks, summary
+
+        now = time.monotonic()
+        if fresh or self._health is None or now - self._health[0] > 60:
+            checks = run_checks(self.cfg)
+            self._health = (now, {"summary": summary(checks), "checks": [c.to_dict() for c in checks]})
+        return self._health[1]
 
     def _work(self) -> None:
         while True:
@@ -245,6 +259,12 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._json(session.status())
             if path == "/api/reminders":
                 return self._json({"reminders": session.reminders()})
+            if path == "/api/system":
+                from jarvis.vitals import vitals
+
+                return self._json(vitals())
+            if path == "/api/health":
+                return self._json(session.health(fresh="fresh" in urlsplit(self.path).query))
             if path == "/api/events":
                 return self._events()
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)

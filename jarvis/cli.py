@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, help="Port for --web (default 8765)")
     parser.add_argument("--local", action="store_true", help="Keep all thinking on this computer (no cloud model)")
     parser.add_argument("--mic-test", action="store_true", help="Check your microphone: levels, speech detection, transcript")
+    parser.add_argument("--doctor", action="store_true", help="Check Ollama, models, the cloud key, disk and mic, with a fix for each problem")
     parser.add_argument("--wake", action="store_true", help="Wait for 'Hey Jarvis' before each request")
     parser.add_argument("--barge-in", action="store_true", help="Let yourself interrupt Jarvis (use headphones)")
     parser.add_argument("--index", nargs="*", metavar="FOLDER",
@@ -181,6 +182,10 @@ def main(argv: list[str] | None = None) -> None:
         cfg["voice"]["barge_in"] = True
     if args.local:
         cfg["llm"]["provider"] = "local"
+    if args.doctor:
+        from jarvis.doctor import print_report, run_checks
+
+        sys.exit(print_report(run_checks(cfg, include_port=True)))
     if args.mic_test:
         from jarvis import mictest
 
@@ -199,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
             cfg["vision"]["model"] if cfg["vision"]["enabled"] else "",
         )
     except OllamaError as exc:
-        sys.exit(str(exc))
+        sys.exit(f"{exc}\nRun jarvis --doctor for a full check.")
 
     if args.index is not None:
         folders = args.index or cfg["brain"]["folders"]

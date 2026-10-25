@@ -12,8 +12,8 @@ vague errors.
 | # | Idea | Why it matters | Effort |
 |---|---|---|---|
 | 1 | **Push-to-talk hotkey** (hold a key to talk, as well as automatic listening) | The mic test showed automatic speech detection is fragile in noisy rooms and on quiet laptop mics. Holding a key always captures exactly what you said. | S |
-| 2 | **`jarvis --doctor`**: one command that checks Ollama, the models, the API key, the mic, disk space and config paths, and prints a fix for each problem | Most of the first install went on finding these problems by hand. | S |
-| 3 | **Clear error messages** that say what failed ("Ollama isn't running", "Groq key rejected", "reply took longer than 5 minutes") instead of "Something went wrong" | The one message users saw gave them nothing to act on. | S |
+| 2 | ~~**`jarvis --doctor`**~~ Done in v0.4, also shown as the Health panel in the browser.: one command that checks Ollama, the models, the API key, the mic, disk space and config paths, and prints a fix for each problem | Most of the first install went on finding these problems by hand. | S |
+| 3 | ~~**Clear error messages**~~ Done in v0.4. that say what failed ("Ollama isn't running", "Groq key rejected", "reply took longer than 5 minutes") instead of "Something went wrong" | The one message users saw gave them nothing to act on. | S |
 | 4 | **Warm up the model at startup**, and keep it loaded (`keep_alive`) | Loading took 21 s, and it happened on the first question. Warming it while Jarvis says hello hides that wait. | S |
 | 5 | **One-click Windows installer** (`setup.ps1`): venv, packages, voice, a config with this machine's real folders, and a model that suits its RAM and GPU | Setup took an expert most of a day. | M |
 
@@ -21,7 +21,7 @@ vague errors.
 
 | # | Idea | Why it matters | Effort |
 |---|---|---|---|
-| 6 | **Latency log for every turn**: speech-to-text ms, time to the model's first word, voice ms | Without it, nobody can tell which stage is slow. It turns "it's slow" into a number. | S |
+| 6 | **Latency log for every turn** (time to first word is now shown under each reply): speech-to-text ms, time to the model's first word, voice ms | Without it, nobody can tell which stage is slow. It turns "it's slow" into a number. | S |
 | 7 | **Smarter instant answers**: match by meaning (embeddings) so paraphrases work, plus **your own commands in config.yaml** ("open my project", "start the build") | The router only knows exact phrasings today. Custom commands make Jarvis useful without a model at all. | M |
 | 8 | ~~**Long-term memory**~~ Done: "remember that..." persists and reaches the model. Next: keep a summary of past conversations too. | History is lost every time Jarvis closes. | M |
 | 9 | **Treat tool output as untrusted** (notes, files, web pages, MCP results), so text inside a file can't steer Jarvis into running commands | The confirmation step already protects actions, but this closes prompt injection properly before more tools arrive. | M |
