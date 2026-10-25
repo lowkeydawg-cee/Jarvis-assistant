@@ -49,6 +49,7 @@ class Assistant:
         self.on_error: Callable[[Exception], None] | None = None
         # Instant answers for common requests, so they never wait on the model.
         self.router = Router() if cfg.get("router", {}).get("enabled", True) else None
+        self.last_source = ""  # where the last reply came from: instant, cloud or local
 
     # ---- inbox -----------------------------------------------------------
 
@@ -102,11 +103,13 @@ class Assistant:
         if hit:
             name, reply = hit
             print(f"  [instant] {name}")
+            self.last_source = "instant"
             self.history.append({"role": "assistant", "content": reply})
             self.speaker.say(reply)
             return reply
         tools = self.toolbox.specs() if self.tools_enabled else None
         spoken: list[str] = []
+        self.last_source = ""
 
         for _ in range(self.MAX_TOOL_ROUNDS):
             stream = SentenceStream()
@@ -117,6 +120,7 @@ class Assistant:
                     self.speaker.feed(sentence)
 
             msg = self.llm.chat_stream(self._messages(), tools=tools, on_text=on_text)
+            self.last_source = getattr(self.llm, "last_provider", "") or "local"
             for sentence in stream.flush():
                 spoken.append(sentence)
                 self.speaker.feed(sentence)

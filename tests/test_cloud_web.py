@@ -183,9 +183,9 @@ def call(base, path, body=None, headers=None):
 class Events:
     """Reads the SSE stream on a thread so the test can wait for events."""
 
-    def __init__(self, base):
+    def __init__(self, base, client=""):
         self.items = []
-        self.resp = urllib.request.urlopen(base + "/api/events", timeout=10)
+        self.resp = urllib.request.urlopen(base + "/api/events" + (f"?client={client}" if client else ""), timeout=10)
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
@@ -207,7 +207,7 @@ class Events:
 def test_web_serves_page_and_status(web):
     _, base = web([])
     status, page = call(base, "/")
-    assert status == 200 and b"JARVIS" in page and b"SpeechRecognition" in page
+    assert status == 200 and b"<title>Jarvis</title>" in page and b"SpeechRecognition" in page
     data = json.loads(call(base, "/api/status")[1])
     assert "run_command" in data["tools"] and data["version"]
 
@@ -258,3 +258,23 @@ def test_web_private_switch(web):
     session.llm.private = False
     call(base, "/api/settings", {"private": True})
     assert session.llm.private is True
+
+
+def test_only_the_newest_tab_stays_active(web):
+    # Two open tabs used to both speak every reply, in two different voices.
+    session, base = web([])
+    first = Events(base, client="tab1")
+    first.wait_for(lambda e: e == {"type": "active", "client": "tab1"})
+    second = Events(base, client="tab2")
+    first.wait_for(lambda e: e == {"type": "active", "client": "tab2"})  # tab1 learns it should stand down
+    second.wait_for(lambda e: e == {"type": "active", "client": "tab2"})
+    assert session.hub.active == "tab2"
+
+
+def test_instant_answers_are_labelled_instant(web):
+    session, base = web([])
+    events = Events(base)
+    call(base, "/api/chat", {"text": "what time is it"})
+    events.wait_for(lambda e: e.get("type") == "sentence" and e["text"].startswith("It's"))
+    done = events.wait_for(lambda e: e.get("type") == "state" and e.get("state") == "idle")
+    assert done["provider"] == "instant"

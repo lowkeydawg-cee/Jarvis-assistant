@@ -21,7 +21,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from jarvis import __version__
 from jarvis.assistant import Assistant
@@ -30,11 +30,22 @@ CONFIRM_TIMEOUT = 60
 
 
 class EventHub:
-    """Fans events out to every open browser tab."""
+    """Fans events out to every open browser tab.
+
+    Only one tab is "active": the newest one to connect. Every tab speaks what it
+    receives, so two open tabs (or a forgotten one) meant every reply was heard
+    twice in two different voices. Older tabs are told to stand down instead.
+    """
 
     def __init__(self):
         self._subs: list[queue.Queue] = []
         self._lock = threading.Lock()
+        self.active: str | None = None
+
+    def claim(self, client: str) -> None:
+        """Make `client` the one tab that listens and speaks; the others go quiet."""
+        self.active = client
+        self.publish({"type": "active", "client": client})
 
     def subscribe(self) -> queue.Queue:
         q: queue.Queue = queue.Queue()
@@ -121,7 +132,7 @@ class WebSession:
             self.bot.drain_inbox()
             self.hub.publish({
                 "type": "state", "state": "idle",
-                "provider": getattr(self.llm, "last_provider", "") or "local",
+                "provider": self.bot.last_source or getattr(self.llm, "last_provider", "") or "local",
             })
 
     # ---- actions from the browser ----------------------------------------
@@ -221,6 +232,9 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
 
         def _events(self):
             q = session.hub.subscribe()
+            client = parse_qs(urlsplit(self.path).query).get("client", [""])[0][:64]
+            if client:
+                session.hub.claim(client)
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
