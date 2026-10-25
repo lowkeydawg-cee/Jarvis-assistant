@@ -52,4 +52,5 @@ vague errors.
 - Lite mode: instant answers, a short local prompt, `--mic-test`, cloud speech to text, and the Kokoro voice.
 - Reminders and a schedule with snooze and desktop notifications; long-term memory.
 - Recognises the owner's voice, and keeps personal answers from other voices.
+- Live knowledge without keys: weather, Wikipedia facts, headlines; a Today panel in the browser app.
 - Browser app: one active tab, voice picker, mic meter, "Up next" panel, sentences no longer split at pauses.

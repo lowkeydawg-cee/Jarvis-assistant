@@ -33,6 +33,7 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Proactive mode | Battery, disk, meeting and build-log watchers, plus a daily briefing, with quiet hours. | psutil, icalendar |
 | Safe actions | Allowlisted shell commands with spoken confirmation, and per-server confirmation for MCP tools. | Pure-Python policy, fully tested |
 | Reminders and schedule | "Remind me to call mum at 5", "every weekday at 8", "what's on my schedule today", snooze. Speaks up and pops a desktop notification when one is due, and catches up on ones missed while it was off. | Own time parser, JSON store, no model needed |
+| Live knowledge | Weather ("will it rain tomorrow?"), facts from Wikipedia ("who is Ada Lovelace?") and BBC headlines, answered in about a second with no API keys. A Today panel in the browser app shows them at a glance. | Open-Meteo, Wikipedia REST, RSS |
 | Memory | "Remember that my standup is at 10:30." Facts persist across restarts and are given to the model in every conversation. | JSON store |
 | Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
 

@@ -176,18 +176,48 @@
   }
   .alert strong { flex: 1; min-width: 160px; font-weight: 600; }
   .alert .eyebrow { display: block; font: 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
-  #upnext { margin: 0 0 26px; }
-  #upnext h2 { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 500; }
-  #upnext ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  #upnext li { display: flex; align-items: baseline; gap: 10px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-  #upnext .when { font: 12px var(--mono); color: var(--accent); white-space: nowrap; }
-  #upnext .what { flex: 1; font-size: 14px; }
-  #upnext button { color: var(--faint); font-size: 18px; line-height: 1; padding: 0 4px; }
-  #upnext button:hover { color: var(--danger); }
-  #upnext .empty { color: var(--faint); font-size: 14px; }
+  /* ---------- Today panel ---------- */
+  #side { display: grid; gap: 22px; margin: 22px 0 6px; }
+  #side h2 { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 500; }
+  #side ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #upnextList li { display: flex; align-items: baseline; gap: 10px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  #upnextList .when { font: 12px var(--mono); color: var(--accent); white-space: nowrap; }
+  #upnextList .what { flex: 1; font-size: 14px; }
+  #upnextList button { color: var(--faint); font-size: 18px; line-height: 1; padding: 0 4px; }
+  #upnextList button:hover { color: var(--danger); }
+  #side .empty { color: var(--faint); font-size: 14px; border: 0; background: none; padding: 0; }
+  .weather { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 14px 16px; }
+  .weather .top { display: flex; align-items: center; gap: 12px; }
+  .weather .temp { font-size: 38px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+  .weather .sky { font-size: 14px; color: var(--muted); }
+  .weather .place { font-size: 14px; font-weight: 600; }
+  .weather .glyph { margin-left: auto; color: var(--accent); }
+  .weather .rows { display: flex; gap: 14px; margin-top: 12px; font: 12px var(--mono); color: var(--muted); flex-wrap: wrap; }
+  .weather form { margin: 8px 0 0; padding: 4px; }
+  .weather form input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; padding: 6px; outline: none; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--surface); }
+  .stat b { display: block; font-size: 18px; font-weight: 600; }
+  .stat span { font: 11px var(--mono); color: var(--muted); }
+  #headlines a { color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.45; display: block; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  #headlines a:hover { color: var(--accent); }
+  #headlines li:last-child a { border-bottom: 0; }
+  #side .headlines-wrap { display: none; }
   @media (min-width: 1180px) {
-    #upnext { position: fixed; top: 84px; right: max(24px, calc((100vw - 720px) / 2 - 300px)); width: 260px; }
+    #side {
+      position: fixed; top: 76px; bottom: 120px; overflow-y: auto; margin: 0; align-content: start;
+      right: max(24px, calc((100vw - 720px) / 2 - 320px)); width: 280px; padding-right: 4px;
+    }
+    #side .headlines-wrap { display: block; }
   }
+
+  /* ---------- life ---------- */
+  #log > div { animation: rise .22s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  .typing { display: inline-flex; gap: 5px; padding: 6px 0; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: blink 1.2s infinite ease-in-out; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 40% { background: var(--text); transform: translateY(-2px); } }
   .banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; color: var(--muted);
     border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
   .banner span { flex: 1; min-width: 180px; }
@@ -222,13 +252,30 @@
 
 <main id="scroller">
   <div class="wrap">
-    <aside id="upnext" hidden aria-label="Up next">
-      <h2>Up next</h2>
-      <ul id="upnextList"></ul>
-      <div class="banner" id="notifyBanner" hidden>
-        <span>Let reminders pop up even when this tab is in the background.</span>
-        <button class="secondary" id="notifyBtn" type="button">Allow notifications</button>
-      </div>
+    <aside id="side" aria-label="Today">
+      <section id="weatherBox" hidden>
+        <h2>Weather</h2>
+        <div class="weather" id="weather"></div>
+      </section>
+      <section id="upnext" hidden>
+        <h2>Up next</h2>
+        <ul id="upnextList"></ul>
+        <div class="banner" id="notifyBanner" hidden>
+          <span>Let reminders pop up even when this tab is in the background.</span>
+          <button class="secondary" id="notifyBtn" type="button">Allow notifications</button>
+        </div>
+      </section>
+      <section>
+        <h2>This laptop</h2>
+        <div class="stats">
+          <div class="stat"><b id="batt">–</b><span>battery</span></div>
+          <div class="stat"><b id="disk">–</b><span>disk free</span></div>
+        </div>
+      </section>
+      <section class="headlines-wrap" id="newsBox" hidden>
+        <h2>Headlines</h2>
+        <ul id="headlines"></ul>
+      </section>
     </aside>
     <section class="welcome" id="welcome">
       <h1 id="greeting">Press Space and talk.</h1>
@@ -589,7 +636,7 @@
     add("you", text);
     current = null;
     if (confirming) { post("/api/confirm", { answer: text }); return; }
-    thinking = true; sentAt = performance.now(); firstWordAt = 0; render();
+    thinking = true; sentAt = performance.now(); firstWordAt = 0; render(); showTyping();
     post("/api/chat", audio ? { text, audio } : { text });
   }
   function greet() {
@@ -600,6 +647,7 @@
   function showBrain(s) {
     status = s; greet(); showVoiceSetup();
     if (s.reminders) loadReminders();
+    loadToday();
     const local = s.private || !s.cloud;
     $("mode").dataset.kind = local ? "local" : "cloud";
     $("modeText").textContent = s.private && s.cloud ? "Private · this laptop" : local ? "Thinking on this laptop" : "Cloud brain";
@@ -623,6 +671,7 @@
         return;
       }
       if (ev.type === "sentence") {
+        hideTyping();
         if (!current) { current = add("jarvis", ""); firstWordAt = firstWordAt || performance.now(); }
         const body = current.querySelector(".body");
         body.textContent += (body.textContent ? " " : "") + ev.text;
@@ -631,7 +680,11 @@
       } else if (ev.type === "state") {
         thinking = ev.state === "thinking";
         if (!thinking && current) addMeta(current, ev.provider, sentAt && firstWordAt ? (firstWordAt - sentAt) / 1000 : 0);
-        if (!thinking) { current = null; sentAt = 0; if (!speechSynthesis.speaking && !queue.length) afterSpeaking(); }
+        if (!thinking) {
+          hideTyping(); current = null; sentAt = 0;
+          if (status.online) loadToday();  // "I live in Kigali" or a new reminder shows up straight away
+          if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
+        }
         render();
       } else if (ev.type === "confirm") {
         confirming = true; showAsk(); render();
@@ -659,6 +712,73 @@
     who.textContent = ev.owner ? `${ev.name} · voice match ${Math.round(ev.score * 100)}%` : "Voice not recognised";
     mine.appendChild(who);
   }
+
+  // ---------- Today panel: weather, laptop, headlines ----------
+  const GLYPHS = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    cloud: '<path d="M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 18z"/>',
+    rain: '<path d="M7 15h10a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 15z"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/>',
+    storm: '<path d="M7 15h10a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 15z"/><path d="M12 15l-2 4h3l-2 4"/>',
+    snow: '<path d="M7 15h10a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 15z"/><path d="M8 19h.01M12 20h.01M16 19h.01"/>',
+  };
+  const glyphFor = (c) => c <= 1 ? "sun" : c <= 48 ? "cloud" : c >= 95 ? "storm" : (c >= 71 && c <= 77) || c === 85 || c === 86 ? "snow" : "rain";
+  function svg(name, size = 30) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name]}</svg>`;
+  }
+  async function loadToday() {
+    let t;
+    try { t = await (await fetch("/api/today")).json(); } catch { return; }
+    $("batt").textContent = t.battery ? `${t.battery.percent}%${t.battery.plugged ? " ⚡" : ""}` : "–";
+    $("disk").textContent = `${t.disk_free_gb} GB`;
+    const box = $("weather");
+    $("weatherBox").hidden = !status.online;
+    box.innerHTML = "";
+    if (t.weather) {
+      const w = t.weather;
+      box.innerHTML = `<div class="top"><div><div class="temp"></div></div><div><div class="place"></div><div class="sky"></div></div>
+        <span class="glyph">${svg(glyphFor(w.code))}</span></div>
+        <div class="rows"><span class="hl"></span><span class="rn"></span><span class="tm"></span></div>`;
+      box.querySelector(".temp").textContent = `${w.temp}°`;
+      box.querySelector(".place").textContent = w.city;
+      box.querySelector(".sky").textContent = `${w.sky[0].toUpperCase()}${w.sky.slice(1)} · feels ${w.feels}°`;
+      box.querySelector(".hl").textContent = `H ${w.today.high}° L ${w.today.low}°`;
+      box.querySelector(".rn").textContent = `rain ${w.today.rain}%`;
+      box.querySelector(".tm").textContent = `tomorrow ${w.tomorrow.high}°`;
+    } else {
+      const p = document.createElement("p"); p.className = "note";
+      p.textContent = t.city ? "Weather is unavailable right now." : "Which city are you in? Jarvis will show your weather here.";
+      box.appendChild(p);
+      if (!t.city) {
+        const f = document.createElement("form");
+        f.innerHTML = '<input placeholder="e.g. Kigali" aria-label="Your city"><button class="secondary" type="submit">Save</button>';
+        f.onsubmit = async (e) => {
+          e.preventDefault();
+          const city = f.querySelector("input").value.trim(); if (!city) return;
+          const r = await post("/api/settings", { city });
+          if (r && r.error) p.textContent = r.error; else loadToday();
+        };
+        box.appendChild(f);
+      }
+    }
+    const news = $("headlines"); news.innerHTML = "";
+    for (const h of t.headlines || []) {
+      const li = document.createElement("li"); const a = document.createElement("a");
+      a.href = h.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = h.title;
+      li.appendChild(a); news.appendChild(li);
+    }
+    $("newsBox").hidden = !(t.headlines || []).length;
+  }
+  setInterval(() => { if (active && status.online) loadToday(); }, 10 * 60 * 1000);
+
+  // ---------- thinking indicator ----------
+  let typingEl = null;
+  function showTyping() {
+    hideTyping();
+    typingEl = document.createElement("div"); typingEl.className = "jarvis";
+    typingEl.innerHTML = '<span class="typing" aria-label="Jarvis is thinking"><i></i><i></i><i></i></span>';
+    $("log").appendChild(typingEl); scrollDown();
+  }
+  function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
 
   // ---------- reminders ----------
   let reminders = [];

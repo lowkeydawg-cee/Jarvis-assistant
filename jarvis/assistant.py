@@ -57,6 +57,7 @@ class Assistant:
         self.owner_name = ""
         self.speaking_as: dict | None = None  # {"owner": bool, "score": float} when the voice was checked
         self.skills = None  # jarvis.skills.Skills: reminders, schedule and memory
+        self.online = None  # jarvis.online.Online: weather, Wikipedia, headlines
         self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
 
     # ---- inbox -----------------------------------------------------------

@@ -30,6 +30,11 @@ def day_facts(bot: Assistant, cfg: dict) -> str:
     from jarvis.watchers import briefing_facts
 
     facts = briefing_facts(cfg["proactive"])
+    if bot.online is not None and bot.online.city:
+        try:
+            facts += "\n" + bot.online.weather_text()
+        except Exception:
+            pass  # offline: the briefing goes ahead without the weather
     if bot.skills is not None:
         facts += "\n" + bot.skills.schedule("today")
     return facts
@@ -64,6 +69,16 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         for tool in bot.skills.tools():
             box.register(tool)
         service.start()
+
+    if cfg["online"]["enabled"]:
+        from jarvis.online import Online, add_online_routes, online_tools
+
+        o = cfg["online"]
+        bot.online = Online(data / "online.json", city=o.get("city", ""), news_feed=o.get("news_feed", ""))
+        if bot.router:
+            add_online_routes(bot.router, bot.online)
+        for tool in online_tools(bot.online):
+            box.register(tool)
 
     if cfg["brain"]["enabled"]:
         brain = build_brain(cfg, llm)

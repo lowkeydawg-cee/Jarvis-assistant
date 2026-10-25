@@ -183,6 +183,41 @@ class WebSession:
         return [{"id": r.id, "text": r.text, "due": r.due, "kind": r.kind, "repeat": r.repeat,
                  "when": when_text(r.when, repeat=r.repeat)} for r in self.skills.store.upcoming()[:20]]
 
+    def today(self) -> dict:
+        """Everything for the Today panel. Each part is optional, so one slow service never blanks the rest."""
+        import shutil
+        from pathlib import Path
+
+        out: dict = {"weather": None, "city": "", "headlines": [], "battery": None,
+                     "disk_free_gb": round(shutil.disk_usage(Path.home()).free / 1024 ** 3)}
+        try:
+            import psutil
+
+            b = psutil.sensors_battery()
+            out["battery"] = {"percent": round(b.percent), "plugged": bool(b.power_plugged)} if b else None
+        except Exception:
+            pass
+        online = self.bot.online
+        if online is not None:
+            out["city"] = online.city
+            try:
+                out["weather"] = online.weather() if online.city else None
+            except Exception:
+                pass
+            try:
+                out["headlines"] = online.headlines(4)
+            except Exception:
+                pass
+        return out
+
+    def set_city(self, city: str) -> str:
+        if self.bot.online is None:
+            raise ValueError("Online features are turned off in config.yaml.")
+        try:
+            return self.bot.online.set_city(city)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+
     def confirm(self, answer: str) -> None:
         self.answers.put(answer)
 
@@ -198,6 +233,8 @@ class WebSession:
             "voice": {"available": self.voice is not None,
                       "enrolled": bool(self.voice and self.voice.enrolled)},
             "reminders": self.skills is not None,
+            "online": self.bot.online is not None,
+            "city": self.bot.online.city if self.bot.online is not None else "",
         }
 
     def set_private(self, value: bool) -> None:
@@ -245,6 +282,8 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._json(session.status())
             if path == "/api/reminders":
                 return self._json({"reminders": session.reminders()})
+            if path == "/api/today":
+                return self._json(session.today())
             if path == "/api/events":
                 return self._events()
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -284,6 +323,11 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             elif path == "/api/settings":
                 if "private" in body:
                     session.set_private(bool(body["private"]))
+                if body.get("city"):
+                    try:
+                        session.set_city(str(body["city"]))
+                    except ValueError as exc:
+                        return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             elif path == "/api/reset":
                 session.bot.history.clear()
             else:

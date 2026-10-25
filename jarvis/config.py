@@ -102,6 +102,12 @@ DEFAULTS: dict[str, Any] = {
         "top_k": 4,
         "reindex_on_start": True,
     },
+    # Weather (Open-Meteo), facts (Wikipedia) and headlines (BBC RSS). No keys needed.
+    "online": {
+        "enabled": True,
+        "city": "",                    # or just say "I live in Kigali"
+        "news_feed": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    },
     "vision": {
         "enabled": False,
         "model": "qwen2.5vl:7b",
