@@ -29,6 +29,11 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     closers = []
     box = bot.toolbox
 
+    if cfg.get("router", {}).get("enabled", True):
+        from jarvis.router import QuickRouter
+
+        bot.router = QuickRouter()
+
     if cfg["brain"]["enabled"]:
         brain = build_brain(cfg, llm)
         k = int(cfg["brain"].get("top_k", 4))

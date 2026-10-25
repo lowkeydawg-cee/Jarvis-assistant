@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-local"
-version = "0.3.0"
+version = "0.3.1"
 description = "A voice-first personal assistant with a hybrid cloud and local brain, a browser app, MCP tools, a second brain, screen vision and proactive alerts."
 readme = "README.md"
 requires-python = ">=3.10"

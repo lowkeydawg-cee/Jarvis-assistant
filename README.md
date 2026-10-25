@@ -25,6 +25,7 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Feature | What it does | Built with |
 |---|---|---|
 | Hybrid brain | Cloud model first for speed, local Ollama as fallback and for private questions. Embeddings and vision always stay local. | Any OpenAI-compatible API (Groq by default), Ollama |
+| Instant answers | Time, date, disk, battery and "what can you do" are answered straight from code in milliseconds, with no model call, even offline. | A small anchored-pattern router |
 | Browser app | Orb UI with push-to-talk, hands-free mode, barge-in, spoken and on-screen confirmations, and a voice picker. | Web Speech API, Server-Sent Events, Python standard library server |
 | Streaming voice | Speaks the first sentence while the model is still writing the rest. Optional barge-in lets you interrupt. | Ollama streaming, Piper, Silero VAD |
 | MCP agent | Connects to any Model Context Protocol server (files, git, calendar, browser) and exposes its tools to the model. | `mcp` Python SDK |
@@ -101,6 +102,7 @@ flowchart LR
 jarvis/
   cli.py          entry point; wires optional features together
   cloud.py        hybrid brain: OpenAI-compatible streaming client and the local fallback router
+  router.py       instant answers that skip the model
   server.py       web mode: local HTTP server, event stream, confirmations
   webui/          the browser app (one HTML file, no build step)
   assistant.py    conversation loop, tool-call loop, inbox
@@ -118,7 +120,7 @@ jarvis/
 scripts/
   download_voice.py     fetches a Piper voice
   install_startup.ps1   start Jarvis when you sign in to Windows
-tests/                  40 tests, no models, mic or API key needed
+tests/                  54 tests, no models, mic or API key needed
 ```
 
 ## Setup

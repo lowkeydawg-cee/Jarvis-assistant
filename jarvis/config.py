@@ -26,6 +26,9 @@ DEFAULTS: dict[str, Any] = {
             "timeout": 60,
         },
     },
+    "router": {
+        "enabled": True,
+    },
     "web": {
         "host": "127.0.0.1",
         "port": 8765,

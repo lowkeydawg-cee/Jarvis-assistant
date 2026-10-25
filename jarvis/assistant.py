@@ -46,6 +46,8 @@ class Assistant:
         self.attention = threading.Event()
         self.screen = None  # set by the CLI when vision is enabled
         self.on_error: Callable[[Exception], None] | None = None
+        self.router = None  # QuickRouter, set by the CLI unless router.enabled is false
+        self.last_source = ""  # "instant" when the router answered, else "model"
 
     # ---- inbox -----------------------------------------------------------
 
@@ -95,6 +97,14 @@ class Assistant:
     def respond(self, user_text: str) -> str:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
         self.history.append({"role": "user", "content": user_text})
+        quick = self.router.answer(user_text) if self.router else None
+        if quick:
+            self.last_source = "instant"
+            self.history.append({"role": "assistant", "content": quick})
+            self.speaker.say(quick)
+            self.speaker.wait()
+            return quick
+        self.last_source = "model"
         tools = self.toolbox.specs() if self.tools_enabled else None
         spoken: list[str] = []
 

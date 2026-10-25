@@ -258,3 +258,60 @@ def test_web_private_switch(web):
     session.llm.private = False
     call(base, "/api/settings", {"private": True})
     assert session.llm.private is True
+
+
+# ---- quick-answer router --------------------------------------------------
+
+from datetime import datetime as _dt
+
+from jarvis.assistant import Assistant
+from jarvis.router import QuickRouter
+
+
+def router():
+    return QuickRouter(clock=lambda: _dt(2026, 10, 25, 9, 5), disk=lambda: "Plenty of disk.",
+                       battery=lambda: "Eighty percent.")
+
+
+@pytest.mark.parametrize("said, expected", [
+    ("What time is it?", "It's 9 oh 5 in the morning."),
+    ("Hey Jarvis, what's the time", "It's 9 oh 5 in the morning."),
+    ("what's the date today", "It's Sunday, the 25th of October."),
+    ("What day is it?", "It's Sunday, the 25th of October."),
+    ("how much disk space do I have", "Plenty of disk."),
+    ("How's my storage?", "Plenty of disk."),
+    ("battery", "Eighty percent."),
+    ("what's my battery level", "Eighty percent."),
+])
+def test_router_answers_simple_requests(said, expected):
+    assert router().answer(said) == expected
+
+
+@pytest.mark.parametrize("said", [
+    "what time is the standup meeting",
+    "why is my disk filling up so fast",
+    "write a poem about the date we met",
+    "how do I fix the battery drain on my phone",
+    "",
+])
+def test_router_leaves_real_questions_to_the_model(said):
+    assert router().answer(said) is None
+
+
+def test_assistant_uses_router_before_the_model():
+    class NoLLM:
+        def chat_stream(self, *a, **k):
+            raise AssertionError("the model should not be called")
+
+    said = []
+
+    class Speaker:
+        def feed(self, s): said.append(s)
+        def say(self, s): said.append(s)
+        def wait(self): return False
+
+    bot = Assistant(NoLLM(), Speaker(), lambda: "", DEFAULTS)
+    bot.router = router()
+    assert bot.respond("what time is it") == "It's 9 oh 5 in the morning."
+    assert said == ["It's 9 oh 5 in the morning."] and bot.last_source == "instant"
+    assert bot.history[-1] == {"role": "assistant", "content": "It's 9 oh 5 in the morning."}

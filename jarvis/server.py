@@ -121,7 +121,8 @@ class WebSession:
             self.bot.drain_inbox()
             self.hub.publish({
                 "type": "state", "state": "idle",
-                "provider": getattr(self.llm, "last_provider", "") or "local",
+                "provider": "instant" if self.bot.last_source == "instant"
+                else getattr(self.llm, "last_provider", "") or "local",
             })
 
     # ---- actions from the browser ----------------------------------------

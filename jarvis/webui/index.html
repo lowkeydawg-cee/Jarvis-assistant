@@ -357,7 +357,7 @@
         thinking = ev.state === "thinking";
         if (!thinking && current && ev.provider) {
           const meta = document.createElement("span");
-          meta.className = "meta"; meta.textContent = ev.provider === "cloud" ? "cloud brain" : "local brain";
+          meta.className = "meta"; meta.textContent = { cloud: "cloud brain", instant: "instant answer" }[ev.provider] || "local brain";
           current.appendChild(meta);
         }
         if (!thinking) { current = null; if (!speechSynthesis.speaking && !queue.length) afterSpeaking(); }
