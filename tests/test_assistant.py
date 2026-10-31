@@ -110,3 +110,16 @@ def test_yes_no_and_exit_parsing():
     assert not is_yes("hmm")
     assert is_exit("goodbye Jarvis")
     assert not is_exit("say goodbye to my bug")
+
+
+def test_trading_hint_only_when_the_trading_bot_is_connected():
+    from jarvis.assistant import TRADING_HINT
+    from jarvis.tools import Tool
+
+    bot, llm, _ = make([{"content": "Fine."}, {"content": "Calm today."}])
+    bot.respond("how does the market look")
+    assert all(TRADING_HINT not in m["content"] for m in llm.seen[0] if m["role"] == "system")
+    bot.toolbox.register(Tool(name="trading__get_market_brief", description="market", handler=lambda a: "calm"))
+    bot.respond("how does the market look")
+    assert any(TRADING_HINT in m["content"] for m in llm.seen[1] if m["role"] == "system")
+    assert "trading__get_market_brief" in llm.tools_seen[1]
