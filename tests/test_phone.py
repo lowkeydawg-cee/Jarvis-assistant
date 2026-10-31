@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+import jarvis.phone as phone_mod
 from jarvis.config import DEFAULTS, _merge
 from jarvis.notify import HOURLY_CAP, Notifier
 from jarvis.phone import Phone, cookie_value, hostname
@@ -145,7 +146,10 @@ class QuietLLM:
 
 
 @pytest.fixture
-def phone_web(tmp_path):
+def phone_web(tmp_path, monkeypatch):
+    # Behave as if Tailscale isn't installed, whatever this machine has: the fake runner below
+    # returns nothing, which only works while the real Tailscale isn't there to be asked.
+    monkeypatch.setattr(phone_mod, "tailscale_exe", lambda: "")
     started = []
 
     def start(phone_on=True, replies=()):
