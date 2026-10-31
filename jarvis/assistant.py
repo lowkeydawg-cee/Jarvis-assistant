@@ -143,19 +143,24 @@ class Assistant:
         spoken: list[str] = []
         self.last_source = ""
 
+        def say_once(sentence: str) -> None:
+            # Models occasionally repeat their answer word for word; never read a sentence out twice.
+            if sentence.strip() in (s.strip() for s in spoken):
+                return
+            spoken.append(sentence)
+            self.speaker.feed(sentence)
+
         for _ in range(self.MAX_TOOL_ROUNDS):
             stream = SentenceStream()
 
             def on_text(delta: str) -> None:
                 for sentence in stream.feed(delta):
-                    spoken.append(sentence)
-                    self.speaker.feed(sentence)
+                    say_once(sentence)
 
             msg = self.llm.chat_stream(self._messages(), tools=tools, on_text=on_text)
             self.last_source = getattr(self.llm, "last_provider", "") or "local"
             for sentence in stream.flush():
-                spoken.append(sentence)
-                self.speaker.feed(sentence)
+                say_once(sentence)
             calls = msg.get("tool_calls") or []
             self.history.append(
                 {"role": "assistant", "content": msg.get("content", ""), **({"tool_calls": calls} if calls else {})}

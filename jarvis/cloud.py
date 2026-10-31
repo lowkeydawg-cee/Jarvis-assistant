@@ -112,6 +112,9 @@ class OpenAICompatClient:
 
         content: list[str] = []
         calls: dict[int, dict[str, Any]] = {}
+        # The stream is UTF-8 but often declares no charset, and requests then assumes Latin-1,
+        # which turned every dash and accent into garbage ("—" became "â€”").
+        resp.encoding = "utf-8"
         for raw in resp.iter_lines(decode_unicode=True):
             if not raw or not raw.startswith("data:"):
                 continue

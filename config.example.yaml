@@ -16,7 +16,7 @@ llm:
   cloud:
     # Groq is fast and has a free tier. To add your key safely, follow docs/SETUP-KEYS.md.
     base_url: https://api.groq.com/openai/v1
-    model: llama-3.3-70b-versatile
+    model: openai/gpt-oss-120b      # strong, fast, reliable with tools. Alternative: qwen/qwen3.8-27b
     api_key_env: GROQ_API_KEY
     # Any OpenAI-compatible API works. Two examples:
     # base_url: https://openrouter.ai/api/v1      (api_key_env: OPENROUTER_API_KEY)

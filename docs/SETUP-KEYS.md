@@ -40,7 +40,7 @@ if ($env:GROQ_API_KEY) { "Key found, $($env:GROQ_API_KEY.Length) characters" } e
 (Invoke-RestMethod https://api.groq.com/openai/v1/models -Headers @{ Authorization = "Bearer $env:GROQ_API_KEY" }).data.id | Select-Object -First 5
 ```
 
-You should see model names such as `llama-3.3-70b-versatile`. A `401` error means the
+You should see model names such as `openai/gpt-oss-120b`. A `401` error means the
 key was mistyped, so redo step 2.
 
 ## 6. Start Jarvis
@@ -50,7 +50,7 @@ cd "D:\Downloads\jarvis (1)\jarvis"
 .\.venv\Scripts\jarvis.exe --text
 ```
 
-The first lines should say `[brain] cloud (llama-3.3-70b-versatile), local fallback (...)`.
+The first lines should say `[brain] cloud (openai/gpt-oss-120b), local fallback (...)`.
 Ask it something open, such as "give me one tip to stay focused", then type `goodbye`.
 
 To talk instead of type, use the browser app (recommended on this laptop):

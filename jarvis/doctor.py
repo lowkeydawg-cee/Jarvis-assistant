@@ -89,7 +89,19 @@ def _cloud(cfg: dict) -> Check:
     if resp.status_code >= 400:
         return Check("Cloud brain", WARN, f"The cloud answered with error {resp.status_code}.",
                      "Try again in a minute. Jarvis uses the local model meanwhile.")
-    return Check("Cloud brain", OK, f"Key accepted, using {cc.get('model', 'the cloud model')}.")
+    model = cc.get("model", "")
+    try:
+        available = [m.get("id", "") for m in resp.json().get("data", [])]
+    except ValueError:
+        available = []
+    if model and available and model not in available:
+        # Providers retire models (Groq dropped Llama 3.3 70B): the key works but every answer fails.
+        chat = [m for m in available if not any(w in m for w in ("whisper", "guard", "orpheus", "tts"))]
+        suggestion = next((m for m in ("openai/gpt-oss-120b", "qwen/qwen3.8-27b") if m in available), chat[0] if chat else "")
+        return Check("Cloud brain", FAIL, f"Key accepted, but the model {model} isn't available any more.",
+                     f"In config.yaml under llm: cloud: set model: {suggestion}" if suggestion else
+                     "Pick a model listed at console.groq.com/docs/models and set it in config.yaml.")
+    return Check("Cloud brain", OK, f"Key accepted, using {model or 'the cloud model'}.")
 
 
 def _disk() -> Check:

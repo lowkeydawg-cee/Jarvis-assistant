@@ -19,6 +19,7 @@ class Fake(BaseHTTPRequestHandler):
 
     models = ["llama3.2:3b", "nomic-embed-text:latest"]
     cloud_status = 200
+    cloud_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "whisper-large-v3"]
 
     def log_message(self, *a):
         pass
@@ -28,7 +29,7 @@ class Fake(BaseHTTPRequestHandler):
             body, code = {"models": [{"name": n} for n in type(self).models]}, 200
         else:
             code = type(self).cloud_status
-            body = {"data": [{"id": "m"}]} if code == 200 else {"error": "nope"}
+            body = {"data": [{"id": m} for m in type(self).cloud_models]} if code == 200 else {"error": "nope"}
         data = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Length", str(len(data)))
@@ -67,6 +68,14 @@ def test_missing_model_says_how_to_pull(fake):
     Fake.models = ["llama3.1:8b"]
     c = by_name(doctor.run_checks(cfg_for(fake)))["Local model"]
     assert c.status == "warn" and c.fix == "Run: ollama pull llama3.2:3b"  # cloud works, so only a warning
+
+
+def test_retired_cloud_model_is_caught_with_a_replacement(fake):
+    # The key works, but Groq retired the model, so every answer silently fell back to the slow local one.
+    old = cfg_for(fake, llm={"cloud": {"model": "llama-3.3-70b-versatile"}})
+    c = by_name(doctor.run_checks(old))["Cloud brain"]
+    assert c.status == "fail" and "isn't available" in c.detail
+    assert c.fix == "In config.yaml under llm: cloud: set model: openai/gpt-oss-120b"
 
 
 def test_rejected_key_and_missing_key(fake, monkeypatch):

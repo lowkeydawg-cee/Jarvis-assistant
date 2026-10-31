@@ -106,6 +106,26 @@ def test_assistant_answers_instantly_without_the_model():
     assert [m["role"] for m in bot.history] == ["user", "assistant"]
 
 
+def test_a_repeated_answer_is_only_spoken_once():
+    class Repeats:
+        def chat_stream(self, messages, tools=None, on_text=None):
+            text = "Black holes trap light. They form from collapsed stars. Black holes trap light. They form from collapsed stars."
+            on_text(text)
+            return {"role": "assistant", "content": text}
+
+    class Fed(Spoken):
+        def feed(self, s):
+            self.said.append(s)
+
+        def wait(self):
+            return False
+
+    speaker = Fed()
+    bot = Assistant(Repeats(), speaker, lambda: "", _merge(DEFAULTS, {"router": {"enabled": False}}))
+    bot.respond("explain black holes")
+    assert speaker.said == ["Black holes trap light.", "They form from collapsed stars."]
+
+
 def test_router_can_be_switched_off():
     bot = Assistant(NoLLM(), Spoken(), lambda: "", _merge(DEFAULTS, {"router": {"enabled": False}}))
     assert bot.router is None
