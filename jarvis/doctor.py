@@ -145,8 +145,14 @@ def port_free(host: str, port: int) -> Check:
         s.settimeout(0.5)
         busy = s.connect_ex((host if host != "0.0.0.0" else "127.0.0.1", port)) == 0
     if busy:
-        return Check("Web port", WARN, f"Port {port} is already in use, maybe by another Jarvis.",
-                     "Close the other Jarvis window, or start with --port 8766.")
+        try:  # usually it's Jarvis itself, already running: that's fine, not a problem
+            r = requests.get(f"http://127.0.0.1:{port}/api/status", timeout=2)
+            if r.ok and "version" in r.json():
+                return Check("Web port", OK, f"Jarvis is already running at http://localhost:{port}.")
+        except (requests.RequestException, ValueError):
+            pass
+        return Check("Web port", WARN, f"Port {port} is in use by another program.",
+                     "Close that program, or start Jarvis with --port 8766.")
     return Check("Web port", OK, f"Port {port} is free.")
 
 

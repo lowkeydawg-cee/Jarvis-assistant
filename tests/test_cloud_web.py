@@ -189,10 +189,13 @@ class Events:
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
-        for line in self.resp:
-            line = line.decode().strip()
-            if line.startswith("data:"):
-                self.items.append(json.loads(line[5:]))
+        try:
+            for line in self.resp:
+                line = line.decode().strip()
+                if line.startswith("data:"):
+                    self.items.append(json.loads(line[5:]))
+        except OSError:  # the test finished and the server shut down: stop quietly
+            pass
 
     def wait_for(self, pred, timeout=5):
         end = time.time() + timeout
