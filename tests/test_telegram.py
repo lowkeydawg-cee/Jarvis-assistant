@@ -86,7 +86,7 @@ def test_voice_notes_are_transcribed(tmp_path):
     b._pair(111, "Saint")
     b.handle(msg(111, voice={"file_id": "abc"}))
     assert heard == [(b"OggS fake audio", "file_1.oga")]
-    assert http.sent[-1] == (111, "🎙 “what time is it”")
+    assert (111, "🎙 “what time is it”") in http.sent  # the answer follows on its own thread
 
 
 def test_alerts_reach_telegram(tmp_path):

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvis</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#121211">
+<meta name="theme-color" content="#0b0c10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -306,6 +306,167 @@
     #modeText { display: inline-block; max-width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
     .textbtn { padding: 6px 8px; }
   }
+
+  /* =====================================================================
+     Glass theme. Frosted panels floating over a slow, soft aurora.
+     Everything above still works on its own; this layer restyles it.
+     ===================================================================== */
+  :root {
+    --bg: #0b0c10;
+    --text: #f1efe9; --muted: #a3a09a; --faint: #6d6a65;
+    --glass: rgba(255, 255, 255, 0.055);
+    --glass-strong: rgba(255, 255, 255, 0.09);
+    --glass-hover: rgba(255, 255, 255, 0.12);
+    --glass-line: rgba(255, 255, 255, 0.11);
+    --glass-hi: rgba(255, 255, 255, 0.16);   /* the bright top edge of each pane */
+    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    --blur: blur(22px) saturate(160%);
+    --line: rgba(255, 255, 255, 0.09);
+    --raised: rgba(255, 255, 255, 0.07);
+    --surface: rgba(255, 255, 255, 0.05);
+    --blob-a: rgba(231, 162, 59, 0.38);
+    --blob-b: rgba(96, 92, 230, 0.32);
+    --blob-c: rgba(32, 178, 170, 0.24);
+    --radius: 18px;
+    --pane: rgba(14, 15, 21, 0.74);          /* slide-over panels: frosted, but solid enough to read */
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #eef0f5; --text: #17181c; --muted: #5d5f66; --faint: #9a9ca3;
+      --glass: rgba(255, 255, 255, 0.55); --glass-strong: rgba(255, 255, 255, 0.7); --glass-hover: rgba(255, 255, 255, 0.85);
+      --glass-line: rgba(255, 255, 255, 0.75); --glass-hi: rgba(255, 255, 255, 0.95);
+      --glass-shadow: 0 10px 40px rgba(40, 44, 70, 0.12);
+      --line: rgba(20, 24, 40, 0.08); --raised: rgba(255, 255, 255, 0.6); --surface: rgba(255, 255, 255, 0.5);
+      --blob-a: rgba(245, 170, 70, 0.45); --blob-b: rgba(130, 125, 255, 0.35); --blob-c: rgba(60, 200, 190, 0.3); --pane: rgba(246, 247, 251, 0.8);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef0f5; --text: #17181c; --muted: #5d5f66; --faint: #9a9ca3;
+    --glass: rgba(255, 255, 255, 0.55); --glass-strong: rgba(255, 255, 255, 0.7); --glass-hover: rgba(255, 255, 255, 0.85);
+    --glass-line: rgba(255, 255, 255, 0.75); --glass-hi: rgba(255, 255, 255, 0.95);
+    --glass-shadow: 0 10px 40px rgba(40, 44, 70, 0.12);
+    --line: rgba(20, 24, 40, 0.08); --raised: rgba(255, 255, 255, 0.6); --surface: rgba(255, 255, 255, 0.5);
+    --blob-a: rgba(245, 170, 70, 0.45); --blob-b: rgba(130, 125, 255, 0.35); --blob-c: rgba(60, 200, 190, 0.3); --pane: rgba(246, 247, 251, 0.8);
+  }
+
+  body { background: var(--bg); isolation: isolate; }
+  /* the aurora: three soft blobs that drift very slowly behind everything */
+  body::before {
+    content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(38% 34% at 22% 18%, var(--blob-a), transparent 70%),
+      radial-gradient(40% 38% at 82% 30%, var(--blob-b), transparent 70%),
+      radial-gradient(36% 36% at 50% 92%, var(--blob-c), transparent 70%),
+      radial-gradient(30% 26% at 42% 55%, var(--blob-b), transparent 75%);
+    filter: blur(40px); animation: drift 28s ease-in-out infinite alternate;
+  }
+  /* a faint grain so the gradients never band */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  @keyframes drift {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(3%, -2%, 0) scale(1.06); }
+    100% { transform: translate3d(-3%, 2%, 0) scale(1.02); }
+  }
+  body[data-state="listening"]::before { --blob-a: rgba(127, 174, 110, 0.4); }
+  body[data-state="thinking"]::before { animation-duration: 9s; }
+
+  /* one recipe for every pane of glass */
+  .glass, body > header, form, .card, #upnext, .you, .ask, .alert, .chip, .voice, .secondary,
+  dialog, #elsewhere > div, .enroll, #rail.open {
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-line);
+    box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-shadow);
+  }
+
+  /* header: a frosted bar the conversation scrolls under */
+  body > header { border-width: 0 0 1px; box-shadow: inset 0 -1px 0 var(--glass-line); position: relative; z-index: 5; }
+  .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 17px; letter-spacing: .01em; }
+  .wordmark::before {
+    content: ""; width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle, var(--accent) 0 28%, transparent 30% 56%, var(--accent) 58% 72%, transparent 74%);
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  .mode, .textbtn { border-radius: 999px; }
+  .mode:hover, .textbtn:hover, #send:hover { background: var(--glass-hover); }
+
+  /* welcome: a glowing orb over the greeting */
+  .welcome { text-align: center; padding-top: 7vh; }
+  .welcome::before {
+    content: ""; display: block; width: 116px; height: 116px; margin: 0 auto 26px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%, var(--accent) 0 17%, transparent 18%),
+      radial-gradient(circle at 50% 50%, transparent 0 43%, var(--accent) 44% 52%, transparent 53%),
+      radial-gradient(circle at 35% 30%, rgba(255,255,255,.25), transparent 60%),
+      var(--glass);
+    border: 1px solid var(--glass-line);
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 60px -6px var(--accent), 0 0 120px -30px var(--accent);
+    animation: breathe 5s ease-in-out infinite;
+  }
+  .welcome h1 { font-size: 34px; }
+  .chips { justify-content: center; }
+  .chip { padding: 8px 16px; color: var(--text); transition: transform .15s, background .15s; }
+  .chip:hover { background: var(--glass-hover); transform: translateY(-1px); border-color: var(--glass-line); }
+  .voices { text-align: left; border-top-color: var(--glass-line); }
+  .voice:hover { background: var(--glass-hover); }
+
+  /* conversation */
+  .you { border-radius: 20px 20px 6px 20px; padding: 10px 16px; background: var(--glass-strong); }
+  .jarvis { padding-left: 16px; border-left: 2px solid var(--accent); }
+  .ask, .alert { border-radius: var(--radius); }
+  .alert { background: linear-gradient(135deg, var(--accent-soft), var(--glass)); border-color: var(--accent); }
+
+  /* composer: a floating glass pill */
+  footer { background: transparent; border: 0; position: relative; z-index: 5; }
+  form { border-radius: 999px; padding: 7px; margin-top: 8px; }
+  form:focus-within { border-color: var(--glass-hi); box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-shadow), 0 0 0 4px var(--accent-soft); }
+  #mic {
+    border-radius: 50%; color: var(--accent-ink);
+    background: radial-gradient(circle at 35% 30%, #ffd08a, var(--accent) 60%);
+    box-shadow: 0 0 22px -4px var(--accent);
+  }
+  #mic:hover { background: radial-gradient(circle at 35% 30%, #ffe0ad, var(--accent) 65%); color: var(--accent-ink); transform: scale(1.04); }
+  body[data-state="listening"] #mic { background: radial-gradient(circle at 35% 30%, #c7f0b5, #6fae5d 60%); box-shadow: 0 0 0 6px rgba(127,174,110,.18), 0 0 28px rgba(127,174,110,.6); animation: breathe 1.4s ease-in-out infinite; }
+  #send { border-radius: 999px; }
+  .primary { border-radius: 999px; background: linear-gradient(135deg, #f3b85a, var(--accent)); box-shadow: 0 4px 18px -6px var(--accent); }
+  .secondary { border-radius: 999px; }
+  .secondary:hover { background: var(--glass-hover); }
+
+  /* command center: glass cards floating over the aurora */
+  #rail { background: transparent; border-left: 1px solid var(--glass-line); }
+  #rail.open { border-radius: 24px 0 0 24px; background: var(--pane); -webkit-backdrop-filter: blur(30px) saturate(160%); backdrop-filter: blur(30px) saturate(160%); }
+  .card, #upnext { border-radius: var(--radius); }
+  #upnext li, #healthList .f { background: var(--glass); border: 1px solid var(--glass-line); }
+  .bar { background: var(--glass-strong); }
+  .bar i { background: linear-gradient(90deg, #f3b85a, var(--accent)); box-shadow: 0 0 10px -2px var(--accent); }
+  .bar i.ok { background: linear-gradient(90deg, #a6d690, #6fae5d); box-shadow: 0 0 10px -2px #6fae5d; }
+  .bar i.hot { background: linear-gradient(90deg, #ff9a8e, var(--danger)); box-shadow: 0 0 10px -2px var(--danger); }
+  .core { filter: drop-shadow(0 0 8px var(--c)); }
+
+  /* settings sheet */
+  dialog { background: var(--pane); -webkit-backdrop-filter: blur(30px) saturate(160%); backdrop-filter: blur(30px) saturate(160%); border-width: 0 0 0 1px; border-radius: 24px 0 0 24px; }
+  dialog::backdrop { background: rgba(5, 6, 10, 0.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  select, .enroll input[type=text] { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 12px; }
+  .enroll { border-radius: var(--radius); }
+  .enroll .sentence { background: var(--glass-strong); }
+  .qr { box-shadow: 0 8px 30px -10px rgba(0,0,0,.5); }
+
+  #elsewhere { background: transparent; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+  #elsewhere > div { padding: 28px; border-radius: 24px; }
+
+  /* browsers without backdrop blur get solid panes so text stays readable */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root { --glass: rgba(30, 31, 38, 0.92); --glass-strong: rgba(36, 37, 46, 0.96); }
+  }
+  @media (max-width: 520px) {
+    .welcome::before { width: 92px; height: 92px; margin-bottom: 20px; }
+    .welcome h1 { font-size: 27px; }
+    #rail.open, dialog { border-radius: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>

@@ -133,8 +133,6 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
                 print(f"  [vision] hotkey unavailable: {exc}")
 
     if cfg["proactive"]["enabled"]:
-        from jarvis.watchers import briefing_facts
-
         box.register(Tool(
             name="daily_briefing",
             description="Get today's facts for a briefing: meetings, git repos, disk. Use for 'brief me' or 'what's my day'.",
@@ -211,7 +209,7 @@ def make_notifier(bot: Assistant, cfg: dict) -> None:
 
 
 def start_watchers(bot: Assistant, cfg: dict) -> None:
-    from jarvis.watchers import Scheduler, briefing_facts, build_watchers
+    from jarvis.watchers import Scheduler, build_watchers
 
     p = cfg["proactive"]
 
@@ -367,8 +365,6 @@ def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)
     if args.briefing:
-        from jarvis.watchers import briefing_facts
-
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
                         "using these facts:\n" + day_facts(bot, cfg))
     return closers

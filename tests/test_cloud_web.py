@@ -194,7 +194,7 @@ class Events:
                 line = line.decode().strip()
                 if line.startswith("data:"):
                     self.items.append(json.loads(line[5:]))
-        except OSError:  # the test finished and the server shut down: stop quietly
+        except OSError:  # the server shut down at the end of the test
             pass
 
     def wait_for(self, pred, timeout=5):
