@@ -89,7 +89,7 @@ class Skills:
                 return "You have no reminders coming up."
             parts = [f"{r.text[:1].lower() + r.text[1:]} {when_text(r.when, now, r.repeat)}" for r in items[:6]]
             more = f", and {len(items) - 6} more" if len(items) > 6 else ""
-            return f"Coming up: " + "; ".join(parts) + more + "."
+            return "Coming up: " + "; ".join(parts) + more + "."
         for i, d in enumerate(DAYS):
             if d in when:
                 day = now + timedelta(days=(i - now.weekday()) % 7)
