@@ -19,6 +19,15 @@ from jarvis.router import Router
 from jarvis.streaming import SentenceStream
 from jarvis.tools import ToolBox
 
+# Added to the prompt only when the trading bot (TradingBots/pairs-bot) is connected over MCP.
+# Without it, a model asked "how does the market look?" tends to say it has no live data.
+TRADING_HINT = ("The owner's trading bot is connected. Its tools (names starting with trading__) have live data "
+                "about the stock market and the bot. For any question about the market, stocks, trading, pairs, "
+                "profit or the bot, call the matching trading tool first and answer from what it returns: "
+                "get_market_brief for how the market looks, get_market_watch for opportunities, get_bot_status, "
+                "get_profit, get_recent_trades, get_demo_results, explain for one pair. Never say you lack market "
+                "data while these tools are available. Summarise in two or three spoken sentences.")
+
 _YES = re.compile(r"\b(yes|yeah|yep|sure|go ahead|do it|ok|okay|affirmative|please)\b", re.I)
 _NO = re.compile(r"\b(no|nope|don't|do not|stop|cancel|never mind|wait)\b", re.I)
 _EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down|that's all)\b", re.I)
@@ -133,6 +142,8 @@ class Assistant:
                 lines.append(f"You are talking with {self.owner_name}, the owner{recognised}. Use their name now and then.")
             if self.memory is not None and self.memory.prompt():
                 lines.append(self.memory.prompt())
+            if self.tools_enabled and any(n.startswith("trading__") for n in self.toolbox.tools):
+                lines.append(TRADING_HINT)
         return [{"role": "system", "content": "\n\n".join(lines)}] if lines else []
 
     def respond(self, user_text: str, speaking_as: dict | None = None) -> str:
