@@ -38,6 +38,7 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Memory | "Remember that my standup is at 10:30." Facts persist across restarts and are given to the model in every conversation. | JSON store |
 | On your phone | Install Jarvis on your phone's home screen and talk to your laptop from anywhere. Tailscale carries it privately with https, and only phones that scanned the pairing code get in. | PWA, Tailscale, Python standard library |
 | Phone alerts | Reminders, battery and build warnings, the morning briefing, and answers you walked away from arrive on your lock screen. Tap one to open Jarvis. | ntfy (free, no account) |
+| Telegram | Your own private bot: chat or send voice notes to Jarvis from anywhere, and get the same alerts there. Only your account can use it; the laptop only makes outgoing connections. | Telegram Bot API, Groq Whisper |
 | Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.

@@ -58,6 +58,8 @@ class Notifier:
         self._background = background
         self._recent: dict[str, float] = {}
         self._sent_times: list[float] = []
+        # Extra push channels, each called as channel(kind, message, title). The Telegram bridge is one.
+        self.channels: list[Callable[[str, str, str], None]] = []
         self._lock = threading.Lock()
         self.last_error = ""
 
@@ -97,13 +99,17 @@ class Notifier:
 
     # ---- sending -----------------------------------------------------------
 
+    @property
+    def ntfy_on(self) -> bool:
+        return self.enabled and bool(self.topic)
+
     def wants(self, kind: str) -> bool:
-        return self.enabled and bool(self.topic) and kind in self.kinds
+        return (self.ntfy_on or bool(self.channels)) and kind in self.kinds
 
     def send(self, kind: str, message: str, title: str = "", force: bool = False) -> bool:
         """Queue an alert. Returns False when it was skipped (off, not wanted, or a repeat)."""
         message = " ".join((message or "").split())
-        if not message or not (self.enabled and self.topic) or not (force or kind in self.kinds):
+        if not message or not (self.ntfy_on or self.channels) or not (force or kind in self.kinds):
             return False
         now = self._clock()
         with self._lock:
@@ -115,6 +121,12 @@ class Notifier:
                 return False
             self._recent[key] = now
             self._sent_times.append(now)
+        # Other channels, such as the Telegram bridge, get the same alerts under the same rules.
+        for channel in list(self.channels):
+            threading.Thread(target=channel, args=(kind, message, title or default_title(kind)),
+                             daemon=True, name="notify-channel").start()
+        if not self.ntfy_on:
+            return True
         headers = {
             "Title": title or default_title(kind),
             "Priority": str(PRIORITY.get(kind, 3)),

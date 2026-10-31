@@ -60,6 +60,14 @@ class Assistant:
         self.online = None  # jarvis.online.Online: weather, Wikipedia, headlines
         self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
         self.notifier = None  # jarvis.notify.Notifier: alerts on your phone
+        self.telegram = None  # jarvis.telegram.TelegramBridge when a bot token is set
+
+    def share_with(self, other: "Assistant") -> "Assistant":
+        """Give `other` this assistant's tools, shortcuts, memory and skills, with its own conversation."""
+        other.toolbox.tools = self.toolbox.tools
+        other.router, other.memory, other.skills, other.online = self.router, self.memory, self.skills, self.online
+        other.owner_name, other.notifier = self.owner_name, self.notifier
+        return other
 
     # ---- inbox -----------------------------------------------------------
 

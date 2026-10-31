@@ -179,6 +179,31 @@ def phone_tool(notifier) -> Tool:
     )
 
 
+def start_telegram(bot: Assistant, cfg: dict, llm) -> None:
+    """Chat with Jarvis from anywhere through your own Telegram bot; alerts go there too."""
+    import os
+
+    from jarvis.telegram import TelegramBridge, transcriber_for
+
+    t = cfg["telegram"]
+    token = os.environ.get(t.get("token_env", "TELEGRAM_BOT_TOKEN"), "")
+    if not t["enabled"] or not token:
+        return
+    try:
+        bridge = TelegramBridge(
+            token, Path(cfg["data_dir"]).expanduser() / "telegram.json",
+            make_assistant=lambda speaker, listen: bot.share_with(Assistant(llm, speaker, listen, cfg)),
+            transcribe=transcriber_for(cfg["stt"]),
+        )
+        bridge.start()
+    except Exception as exc:
+        print(f"  [telegram] couldn't start: {exc}. Check the token (docs/PHONE.md, part 3).")
+        return
+    bot.telegram = bridge
+    if bot.notifier is not None:
+        bot.notifier.channels.append(bridge.notify)
+
+
 def make_notifier(bot: Assistant, cfg: dict) -> None:
     from jarvis.notify import Notifier
 
@@ -338,6 +363,7 @@ def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
     warm_up(llm)
     make_notifier(bot, cfg)
     closers = add_features(bot, cfg, llm)
+    start_telegram(bot, cfg, llm)
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)
     if args.briefing:

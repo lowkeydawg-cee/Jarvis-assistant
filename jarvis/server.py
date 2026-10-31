@@ -427,6 +427,9 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._json({**session.status(), "remote": access == "phone"})
             if path == "/api/phone" and access == "local":  # it holds the key, so never shown on a phone
                 return self._json(session.phone_info(refresh="fresh" in url.query))
+            if path == "/api/telegram" and access == "local":  # holds the pairing code
+                t = session.bot.telegram
+                return self._json(t.status() if t else {"enabled": False})
             if path == "/api/reminders":
                 return self._json({"reminders": session.reminders()})
             if path == "/api/today":
@@ -464,6 +467,13 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 if access != "local":
                     return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
                 return self._json(session.phone_settings(body))
+            elif path == "/api/telegram/unlink":
+                if access != "local":
+                    return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
+                if session.bot.telegram:
+                    session.bot.telegram.unlink()
+                t = session.bot.telegram
+                return self._json(t.status() if t else {"enabled": False})
             elif path == "/api/notify/test":
                 return self._json({"ok": session.test_alert()})
             elif path == "/api/voice/enroll":

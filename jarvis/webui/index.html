@@ -426,6 +426,7 @@
         <div class="phone-steps" id="phoneSteps" hidden></div>
         <label class="toggle"><input id="alertsOn" type="checkbox"><span>Phone alerts<small>Reminders, warnings, your morning briefing, and answers you walked away from, on your lock screen.</small></span></label>
         <div class="phone-steps" id="alertSteps" hidden></div>
+        <div class="phone-steps" id="tgSteps"></div>
       </div>
     </div>
     <div class="field">
@@ -994,7 +995,7 @@
     if (e.code === "Space") { e.preventDefault(); listening ? stopListening() : startListening(); }
     if (e.key === "Escape") { stopSpeaking(true); stopListening(); $("rail").classList.remove("open"); }
   });
-  function openSettings() { if (!status.remote) loadPhone(); $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
+  function openSettings() { if (!status.remote) { loadPhone(); loadTelegram(); } $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
   $("settingsBtn").onclick = openSettings;
   $("closeSettings").onclick = () => $("settings").close();
   $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) $("settings").close(); });
@@ -1030,6 +1031,22 @@
     b.textContent = label; b.onclick = fn; box.appendChild(b); return b;
   }
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function loadTelegram() {
+    const box = $("tgSteps");
+    let t;
+    try { const r = await fetch("/api/telegram"); if (!r.ok) return; t = await r.json(); } catch { return; }
+    box.innerHTML = "";
+    if (!t.enabled) {
+      para(box, "<b>Telegram</b>: chat with Jarvis from anywhere, by text or voice note, and get your alerts there too. "
+        + "Set it up in two minutes with docs/PHONE.md, part 3.");
+    } else if (t.linked) {
+      para(box, `<b>Telegram</b>: linked${t.name ? " to " + esc(t.name) : ""} through @${esc(t.bot)}. Message it any time; your alerts arrive there too.`);
+      button(box, "Unlink Telegram", async () => { await post("/api/telegram/unlink"); loadTelegram(); });
+    } else {
+      para(box, `<b>Telegram</b>: open @${esc(t.bot)} on your phone, press Start, and send <code>/start ${esc(t.code)}</code>`);
+    }
+  }
 
   async function loadPhone(fresh = false, settings = null) {
     let data;

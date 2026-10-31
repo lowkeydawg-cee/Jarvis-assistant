@@ -55,6 +55,12 @@ DEFAULTS: dict[str, Any] = {
         "phone": False,                # or switch it on in Settings > Your phone
         "extra_hosts": [],             # other names a paired phone may use, e.g. a custom domain
     },
+    # Chat with Jarvis from anywhere through your own Telegram bot (text or voice notes); alerts
+    # go there too. Needs a bot token from @BotFather saved as TELEGRAM_BOT_TOKEN (docs/PHONE.md).
+    "telegram": {
+        "enabled": True,
+        "token_env": "TELEGRAM_BOT_TOKEN",
+    },
     # Phone alerts through ntfy (free app, no account). Or switch them on in Settings > Your phone.
     "notify": {
         "enabled": False,
