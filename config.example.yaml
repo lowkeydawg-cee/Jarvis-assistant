@@ -29,9 +29,17 @@ router:
 
 # The browser app:  jarvis --web
 web:
-  host: 127.0.0.1                  # only this computer can open it
+  host: 127.0.0.1                  # only this computer can open it (a paired phone comes in through Tailscale)
   port: 8765
   open_browser: true
+  phone: false                     # or switch on in Settings > Your phone. See docs/PHONE.md
+
+# Alerts on your phone through the free ntfy app. Or switch on in Settings > Your phone.
+notify:
+  enabled: false
+  server: https://ntfy.sh
+  topic: ""                        # blank: Jarvis makes a private one
+  send: [reminders, alerts, briefing, away, problems, status]
 
 stt:
   provider: local                  # local, or cloud: Groq Whisper (about 1 s), falls back to local

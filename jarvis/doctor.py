@@ -150,10 +150,40 @@ def port_free(host: str, port: int) -> Check:
     return Check("Web port", OK, f"Port {port} is free.")
 
 
+def _phone(cfg: dict) -> list[Check]:
+    """Only shown once the phone is switched on: is Tailscale ready to carry it?"""
+    from jarvis.phone import Phone
+
+    phone = Phone(cfg["web"], cfg["data_dir"])
+    if not phone.enabled:
+        return []
+    port = int(cfg["web"]["port"])
+    ts = phone.tailscale()
+    if not ts["installed"]:
+        return [Check("Phone", WARN, "Phone access is on, but Tailscale isn't installed.",
+                      "Install Tailscale from tailscale.com/download on the laptop and the phone, and sign in on both.")]
+    if not ts["running"]:
+        return [Check("Phone", WARN, "Tailscale is installed but not connected.", "Open Tailscale and sign in.")]
+    if not ts["serving"]:
+        return [Check("Phone", WARN, "Tailscale is connected but isn't passing Jarvis to your phone yet.",
+                      f"Run this once in PowerShell: tailscale serve --bg {port}")]
+    return [Check("Phone", OK, f"Your phone can reach Jarvis at https://{ts['name']}")]
+
+
+def _alerts(cfg: dict) -> list[Check]:
+    from jarvis.notify import Notifier
+
+    n = Notifier(cfg["notify"], cfg["data_dir"])
+    if not n.enabled:
+        return []
+    return [Check("Phone alerts", OK, f"Sending to {n.subscribe_url}. Subscribe to it in the ntfy app.")]
+
+
 def run_checks(cfg: dict, include_port: bool = False) -> list[Check]:
     cloud = _cloud(cfg)
     cloud_ready = cloud.status == OK and str(cfg["llm"].get("provider", "hybrid")).lower() != "local"
-    checks = [_python(), cloud, *_ollama(cfg, cloud_ready), _disk(), *_folders(cfg), _microphone()]
+    checks = [_python(), cloud, *_ollama(cfg, cloud_ready), _disk(), *_folders(cfg), _microphone(),
+              *_phone(cfg), *_alerts(cfg)]
     if include_port:
         checks.append(port_free(cfg["web"]["host"], int(cfg["web"]["port"])))
     return checks

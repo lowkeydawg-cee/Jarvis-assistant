@@ -43,22 +43,29 @@ class EventHub:
         self._subs: list[queue.Queue] = []
         self._lock = threading.Lock()
         self.active: str | None = None
+        self.clients: dict[str, int] = {}  # open tabs by id, counted in case one reconnects twice
 
     def claim(self, client: str) -> None:
         """Make `client` the one tab that listens and speaks; the others go quiet."""
         self.active = client
         self.publish({"type": "active", "client": client})
 
-    def subscribe(self) -> queue.Queue:
+    def subscribe(self, client: str = "") -> queue.Queue:
         q: queue.Queue = queue.Queue()
         with self._lock:
             self._subs.append(q)
+            if client:
+                self.clients[client] = self.clients.get(client, 0) + 1
         return q
 
-    def unsubscribe(self, q: queue.Queue) -> None:
+    def unsubscribe(self, q: queue.Queue, client: str = "") -> None:
         with self._lock:
             if q in self._subs:
                 self._subs.remove(q)
+            if client and client in self.clients:
+                self.clients[client] -= 1
+                if self.clients[client] <= 0:
+                    del self.clients[client]
 
     def publish(self, event: dict) -> None:
         with self._lock:
@@ -73,9 +80,11 @@ class WebSpeaker:
     def __init__(self, hub: EventHub):
         self.hub = hub
         self._interrupted = threading.Event()
+        self.said: list[str] = []  # this turn's sentences, for a phone alert if nobody is watching
 
     def feed(self, sentence: str) -> None:
         if not self._interrupted.is_set():
+            self.said.append(sentence)
             self.hub.publish({"type": "sentence", "text": sentence})
 
     def say(self, sentence: str) -> bool:
@@ -106,6 +115,10 @@ class WebSession:
         self.bot.on_error = self._on_error
         self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
         self.skills = None  # jarvis.skills.Skills when reminders are on
+        self.phone = None  # jarvis.phone.Phone: lets a paired phone use Jarvis
+        self.port = 0
+        self.visible: dict[str, bool] = {}  # is each tab on screen? (reported by the page)
+        self._asked = False  # the person asked something since the worker last looked
         self._worker = threading.Thread(target=self._work, daemon=True, name="jarvis-web")
         self._health: tuple[float, dict] | None = None
 
@@ -132,11 +145,28 @@ class WebSession:
             self.confirming.clear()
             self.hub.publish({"type": "confirm_done"})
 
+    @property
+    def notifier(self):
+        return getattr(self.bot, "notifier", None)
+
     def _on_error(self, exc: Exception) -> None:
         from jarvis.errors import explain
 
         self.hub.publish({"type": "error", "text": explain(exc), "detail": str(exc)[:300]})
         self.speaker.say(explain(exc))
+        if self.notifier is not None:
+            self.notifier.send("problems", explain(exc))
+
+    def watching(self) -> bool:
+        """Is the person looking at Jarvis right now, on the laptop or the phone?"""
+        active = self.hub.active
+        return bool(active) and active in self.hub.clients and self.visible.get(active, True)
+
+    def set_visible(self, client: str, visible: bool) -> None:
+        self.visible[client[:64]] = visible
+        if len(self.visible) > 50:  # forget tabs that closed long ago
+            for k in list(self.visible)[:-20]:
+                self.visible.pop(k, None)
 
     def health(self, fresh: bool = False) -> dict:
         """Health checks for the dashboard, cached for a minute (they make network calls)."""
@@ -153,8 +183,13 @@ class WebSession:
             self.bot.attention.wait()
             self.hub.publish({"type": "state", "state": "thinking"})
             self.bot.last_source = ""  # stays empty for announcements such as reminders
+            asked, self._asked = self._asked, False
+            self.speaker.said = []
             self.bot.drain_inbox()
             self.hub.publish({"type": "state", "state": "idle", "provider": self.bot.last_source})
+            # You asked, then put the phone down or closed the tab: the answer follows you.
+            if asked and self.speaker.said and self.notifier is not None and not self.watching():
+                self.notifier.send("away", " ".join(self.speaker.said))
 
     # ---- actions from the browser ----------------------------------------
 
@@ -165,6 +200,7 @@ class WebSession:
         if self.confirming.is_set():
             self.answers.put(text)  # "yes" or "no" to a pending question
             return
+        self._asked = True
         self.bot.post("ask", text, self.check_voice(audio_b64))
 
     def check_voice(self, audio_b64: str) -> dict | None:
@@ -249,11 +285,65 @@ class WebSession:
             "reminders": self.skills is not None,
             "online": self.bot.online is not None,
             "city": self.bot.online.city if self.bot.online is not None else "",
+            "phone": bool(self.phone and self.phone.enabled),
+            "notify": self.notifier.info() if self.notifier is not None else None,
         }
+
+    # ---- phone and alerts (changed only from the laptop itself) ---------------
+
+    def phone_info(self, refresh: bool = False) -> dict:
+        if self.phone is None:
+            return {"enabled": False, "available": False}
+        info = self.phone.info(self.port, refresh)
+        if self.notifier is not None:
+            self.notifier.click_url = info["url"]
+        return {"available": True, **info}
+
+    def phone_settings(self, body: dict) -> dict:
+        if self.phone is not None:
+            if body.get("phone") is True:
+                self.phone.turn_on()
+            elif body.get("phone") is False:
+                self.phone.turn_off()
+            if body.get("reset_key"):
+                self.phone.reset_key()
+        n = self.notifier
+        if n is not None:
+            if body.get("alerts") is True:
+                n.turn_on()
+            elif body.get("alerts") is False:
+                n.turn_off()
+            if body.get("new_topic"):
+                n.new_topic()
+        return {"phone": self.phone_info(refresh=True), "notify": n.info() if n is not None else None}
+
+    def test_alert(self) -> bool:
+        n = self.notifier
+        if n is None or not n.enabled:
+            return False
+        return n.send("status", "This is a test from Jarvis. Phone alerts are working.", title="Jarvis", force=True)
 
     def set_private(self, value: bool) -> None:
         if hasattr(self.llm, "private"):
             self.llm.private = value
+
+
+LOGIN_PAGE = b"""<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Jarvis</title>
+<body style="background:#121211;color:#edebe5;font:16px/1.5 system-ui,sans-serif;padding:32px;max-width:520px">
+<h1 style="font-size:22px">Pair this phone first</h1>
+<p>On your laptop, open Jarvis, go to Settings, then Your phone, and scan the code with this phone's camera.</p>
+</body></html>"""
+
+
+def _loopback(addr: str) -> bool:
+    import ipaddress
+
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return ip.is_loopback or bool(ip.ipv4_mapped and ip.ipv4_mapped.is_loopback)
 
 
 def page() -> bytes:
@@ -268,12 +358,42 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             pass
 
         # Only answer requests addressed to this computer, from this page. That
-        # stops other websites from talking to Jarvis behind your back.
-        def _trusted(self) -> bool:
-            if self.headers.get("Host", "") not in allowed_hosts:
-                return False
+        # stops other websites from talking to Jarvis behind your back. A paired
+        # phone is the one exception, and it must show the phone key.
+        def _access(self) -> str:
+            """local (this laptop's browser), phone (paired), login (needs the key) or forbidden."""
+            from jarvis.phone import cookie_value
+
+            host = self.headers.get("Host", "")
             origin = self.headers.get("Origin")
-            return origin is None or urlsplit(origin).netloc in allowed_hosts
+            if origin is not None and urlsplit(origin).netloc.lower() != host.lower():
+                return "forbidden"
+            # Tailscale serve relays the phone from 127.0.0.1, so a relayed request is never "local".
+            relayed = any(h.lower().startswith(("x-forwarded-", "tailscale-")) for h in self.headers.keys())
+            if host in allowed_hosts and _loopback(self.client_address[0]) and not relayed:
+                return "local"
+            phone = session.phone
+            if phone is None or not phone.host_allowed(host):
+                return "forbidden"
+            if phone.key_ok(cookie_value(self.headers.get("Cookie", ""))):
+                return "phone"
+            return "login"
+
+        def _pair(self, key: str, access: str):
+            """The phone opens /pair?key=... once (from the QR code) and keeps the key in a cookie."""
+            from jarvis.phone import COOKIE
+
+            phone = session.phone
+            if access == "local" or phone is None or not phone.key_ok(key):
+                return self._send(HTTPStatus.UNAUTHORIZED, LOGIN_PAGE, "text/html; charset=utf-8")
+            secure = ".ts.net" in self.headers.get("Host", "") or self.headers.get("X-Forwarded-Proto") == "https"
+            self.send_response(HTTPStatus.SEE_OTHER)
+            # A year, so the installed app stays signed in. Resetting the key on the laptop signs phones out.
+            self.send_header("Set-Cookie", f"{COOKIE}={key}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax"
+                                           + ("; Secure" if secure else ""))
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _send(self, status: int, body: bytes, kind: str = "application/json") -> None:
             self.send_response(status)
@@ -287,13 +407,26 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             self._send(status, json.dumps(data).encode())
 
         def do_GET(self):
-            if not self._trusted():
+            from jarvis.pwa import asset
+
+            access = self._access()
+            if access == "forbidden":
                 return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
-            path = urlsplit(self.path).path
+            url = urlsplit(self.path)
+            path = url.path
+            app_file = asset(path)
+            if app_file:  # icons and the manifest hold nothing private; phones fetch them without the key
+                return self._send(200, *app_file)
+            if path == "/pair":
+                return self._pair(parse_qs(url.query).get("key", [""])[0], access)
+            if access == "login":
+                return self._send(HTTPStatus.UNAUTHORIZED, LOGIN_PAGE, "text/html; charset=utf-8")
             if path == "/":
                 return self._send(200, page(), "text/html; charset=utf-8")
             if path == "/api/status":
-                return self._json(session.status())
+                return self._json({**session.status(), "remote": access == "phone"})
+            if path == "/api/phone" and access == "local":  # it holds the key, so never shown on a phone
+                return self._json(session.phone_info(refresh="fresh" in url.query))
             if path == "/api/reminders":
                 return self._json({"reminders": session.reminders()})
             if path == "/api/today":
@@ -309,8 +442,11 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
         def do_POST(self):
-            if not self._trusted():
+            access = self._access()
+            if access == "forbidden":
                 return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            if access == "login":
+                return self._json({"error": "Scan the code on your laptop first."}, HTTPStatus.UNAUTHORIZED)
             try:
                 length = int(self.headers.get("Content-Length") or 0)
                 if length > MAX_BODY:  # spoken messages carry a few seconds of audio; enrolment a few more
@@ -321,6 +457,15 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             path = urlsplit(self.path).path
             if path == "/api/chat":
                 session.chat(str(body.get("text", "")), str(body.get("audio") or ""))
+            elif path == "/api/presence":
+                session.set_visible(str(body.get("client", "")), bool(body.get("visible", True)))
+                return self._json({"ok": True})
+            elif path == "/api/phone":
+                if access != "local":
+                    return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
+                return self._json(session.phone_settings(body))
+            elif path == "/api/notify/test":
+                return self._json({"ok": session.test_alert()})
             elif path == "/api/voice/enroll":
                 if session.voice is None:
                     return self._json({"error": "Voice recognition isn't set up. Run "
@@ -355,8 +500,8 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             self._json({"ok": True, **session.status()})
 
         def _events(self):
-            q = session.hub.subscribe()
             client = parse_qs(urlsplit(self.path).query).get("client", [""])[0][:64]
+            q = session.hub.subscribe(client)
             if client:
                 session.hub.claim(client)
             try:
@@ -376,7 +521,7 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
             finally:
-                session.hub.unsubscribe(q)
+                session.hub.unsubscribe(q, client)
 
     return Handler
 
@@ -388,6 +533,7 @@ def serve(session: WebSession, host: str = "127.0.0.1", port: int = 8765, open_b
     httpd.daemon_threads = True
     port = httpd.server_port  # the real port, in case 0 asked for any free one
     allowed.update(f"{n}:{port}" for n in names)
+    session.port = port
     session.start()
     url = f"http://{'localhost' if host in {'127.0.0.1', '0.0.0.0'} else host}:{port}"
     print(f"  Jarvis is live at {url}  (Ctrl+C to stop)")

@@ -52,6 +52,15 @@ DEFAULTS: dict[str, Any] = {
         "host": "127.0.0.1",
         "port": 8765,
         "open_browser": True,
+        "phone": False,                # or switch it on in Settings > Your phone
+        "extra_hosts": [],             # other names a paired phone may use, e.g. a custom domain
+    },
+    # Phone alerts through ntfy (free app, no account). Or switch them on in Settings > Your phone.
+    "notify": {
+        "enabled": False,
+        "server": "https://ntfy.sh",
+        "topic": "",                   # blank: Jarvis makes a private one
+        "send": ["reminders", "alerts", "briefing", "away", "problems", "status"],
     },
     "stt": {
         "provider": "local",           # local, or cloud (Groq Whisper, falls back to local)

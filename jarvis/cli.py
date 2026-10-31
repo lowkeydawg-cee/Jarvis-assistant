@@ -61,6 +61,8 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             bot.post("say", text)
             if bot.on_reminder:
                 bot.on_reminder(r, text)
+            if bot.notifier is not None:
+                bot.notifier.send("reminders", r.text, title="Reminder" if r.kind == "reminder" else "Coming up")
 
         service = ReminderService(store, fire)
         bot.skills = Skills(store, bot.memory, service)
@@ -143,6 +145,9 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
 
             bot.router.add("briefing", BRIEFING_PATTERN, briefing_route(lambda: day_facts(bot, cfg)))
 
+    if bot.notifier is not None:
+        box.register(phone_tool(bot.notifier))
+
     servers = cfg["mcp"].get("servers") or {}
     if servers:
         from jarvis.mcp_client import MCPHub
@@ -155,17 +160,50 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     return closers
 
 
+def phone_tool(notifier) -> Tool:
+    def handler(a: dict) -> str:
+        if not notifier.enabled:
+            return "Phone alerts are off. Turn them on in Settings, under Your phone."
+        sent = notifier.send("status", str(a.get("message", "")), title=str(a.get("title") or "Jarvis"), force=True)
+        return "Sent to your phone." if sent else "There was nothing to send."
+
+    return Tool(
+        name="send_to_phone",
+        description="Send a short message to the user's phone as a notification. Use for 'send that to my phone', "
+                    "'text me the address', or to report back on something they asked you to keep an eye on.",
+        parameters={"type": "object", "properties": {
+            "message": {"type": "string", "description": "The text to send."},
+            "title": {"type": "string", "description": "A two to four word title."},
+        }, "required": ["message"]},
+        handler=handler,
+    )
+
+
+def make_notifier(bot: Assistant, cfg: dict) -> None:
+    from jarvis.notify import Notifier
+
+    bot.notifier = Notifier(cfg["notify"], cfg["data_dir"])
+
+
 def start_watchers(bot: Assistant, cfg: dict) -> None:
     from jarvis.watchers import Scheduler, briefing_facts, build_watchers
 
     p = cfg["proactive"]
 
     def briefing() -> None:
+        facts = day_facts(bot, cfg)
         bot.post("ask", "Give me my briefing for today in three to five short spoken sentences, "
-                        "using these facts:\n" + day_facts(bot, cfg))
+                        "using these facts:\n" + facts)
+        if bot.notifier is not None:
+            bot.notifier.send("briefing", "\n".join(line for line in facts.splitlines() if line.strip()))
+
+    def alert(message: str) -> None:
+        bot.post("say", message)
+        if bot.notifier is not None:
+            bot.notifier.send("alerts", message)
 
     quiet = tuple(p["quiet_hours"]) if p.get("quiet_hours") else None
-    Scheduler(build_watchers(p), lambda m: bot.post("say", m), quiet_hours=quiet,
+    Scheduler(build_watchers(p), alert, quiet_hours=quiet,
               briefing_at=p.get("briefing_at"), on_briefing=briefing).start()
 
 
@@ -298,6 +336,7 @@ def warm_up(llm) -> None:
 
 def start_extras(bot: Assistant, cfg: dict, llm, args) -> list:
     warm_up(llm)
+    make_notifier(bot, cfg)
     closers = add_features(bot, cfg, llm)
     if cfg["proactive"]["enabled"]:
         start_watchers(bot, cfg)
@@ -326,10 +365,14 @@ def run_web(cfg: dict, llm, args) -> None:
     if session.bot.skills is not None:
         session.attach_skills(session.bot.skills)
     w = cfg["web"]
+    from jarvis.phone import Phone
+
+    session.phone = Phone(w, cfg["data_dir"])
     try:
         httpd, _ = serve(session, w["host"], args.port or int(w["port"]), bool(w.get("open_browser", True)))
     except OSError as exc:
         sys.exit(f"Couldn't start the web server: {exc}. Is Jarvis already running? Try --port 8766.")
+    announce_online(session)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -338,6 +381,17 @@ def run_web(cfg: dict, llm, args) -> None:
         httpd.server_close()
         for c in closers:
             c.close()
+
+
+def announce_online(session) -> None:
+    """Tell the phone Jarvis is up, with a tap-to-open link. Runs aside: Tailscale can be slow to answer."""
+    def go():
+        info = session.phone_info()  # also points alerts at the phone address
+        if session.notifier is not None:
+            where = " Tap to open it." if info.get("url") else ""
+            session.notifier.send("status", "Jarvis is online on your laptop." + where)
+
+    threading.Thread(target=go, daemon=True, name="online-note").start()
 
 
 def run(bot: Assistant, cfg: dict, llm: OllamaClient, args, wait=None) -> None:

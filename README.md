@@ -36,6 +36,8 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Reminders and schedule | "Remind me to call mum at 5", "every weekday at 8", "what's on my schedule today", snooze. Speaks up and pops a desktop notification when one is due, and catches up on ones missed while it was off. | Own time parser, JSON store, no model needed |
 | Live knowledge | Weather ("will it rain tomorrow?"), facts from Wikipedia ("who is Ada Lovelace?") and BBC headlines, answered in about a second with no API keys. A Today panel in the browser app shows them at a glance. | Open-Meteo, Wikipedia REST, RSS |
 | Memory | "Remember that my standup is at 10:30." Facts persist across restarts and are given to the model in every conversation. | JSON store |
+| On your phone | Install Jarvis on your phone's home screen and talk to your laptop from anywhere. Tailscale carries it privately with https, and only phones that scanned the pairing code get in. | PWA, Tailscale, Python standard library |
+| Phone alerts | Reminders, battery and build warnings, the morning briefing, and answers you walked away from arrive on your lock screen. Tap one to open Jarvis. | ntfy (free, no account) |
 | Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
@@ -68,7 +70,9 @@ flowchart LR
 
 Every reply streams back one sentence at a time over Server-Sent Events, so the browser starts speaking the first sentence while the model is still writing the rest. Watcher alerts and the morning briefing come down the same stream. When Jarvis wants to run a command it asks out loud and shows Yes and No buttons; answering by voice works too.
 
-Privacy in web mode: the Private switch keeps the thinking on your machine. Speech recognition in Chrome and Edge uses the browser maker's speech service, so for fully offline voice use `jarvis --local`. The server only listens on 127.0.0.1 and refuses requests from other websites.
+Privacy in web mode: the Private switch keeps the thinking on your machine. Speech recognition in Chrome and Edge uses the browser maker's speech service, so for fully offline voice use `jarvis --local`. The server only listens on 127.0.0.1 and refuses requests from other websites. A paired phone reaches it through Tailscale and must show its pairing key on every request.
+
+To use Jarvis on your phone and get alerts there, see [docs/PHONE.md](docs/PHONE.md).
 
 Any OpenAI-compatible provider works. Change `llm.cloud` in `config.yaml` to use OpenRouter, OpenAI, or Claude through Anthropic's OpenAI-compatible endpoint.
 

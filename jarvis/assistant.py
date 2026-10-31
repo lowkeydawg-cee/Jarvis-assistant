@@ -59,6 +59,7 @@ class Assistant:
         self.skills = None  # jarvis.skills.Skills: reminders, schedule and memory
         self.online = None  # jarvis.online.Online: weather, Wikipedia, headlines
         self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
+        self.notifier = None  # jarvis.notify.Notifier: alerts on your phone
 
     # ---- inbox -----------------------------------------------------------
 

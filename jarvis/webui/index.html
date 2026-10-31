@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvis</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#121211">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
 <style>
   :root {
     color-scheme: dark;
@@ -106,7 +114,8 @@
 
   /* ---------- composer ---------- */
   footer { border-top: 1px solid var(--line); background: var(--bg); }
-  footer .wrap { padding-top: 10px; padding-bottom: 16px; }
+  footer .wrap { padding-top: 10px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  body > header .wrap { padding-top: env(safe-area-inset-top); height: calc(56px + env(safe-area-inset-top)); }
   .status { display: flex; align-items: center; gap: 10px; height: 22px; font: 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .status .hint { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--faint); }
   .meter { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
@@ -222,6 +231,14 @@
   .enroll .rec.on { background: var(--danger); color: #fff; }
   .badge-ok { color: #7fae6e; font-size: 14px; }
 
+  /* ---------- your phone ---------- */
+  .phone-steps { display: grid; gap: 10px; font-size: 14px; }
+  .phone-steps ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .phone-steps code { font: 13px var(--mono); background: var(--raised); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  .qr { width: 188px; height: 188px; padding: 8px; background: #fff; border-radius: 10px; }
+  .qr img, .qr canvas { width: 172px !important; height: 172px !important; }
+  .phone-steps .link { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
+
   /* ---------- command center rail ---------- */
   #statusBtn { display: inline-flex; align-items: center; gap: 6px; }
   #statusBtn .dot { width: 6px; height: 6px; }
@@ -285,6 +302,9 @@
   @media (max-width: 520px) {
     .welcome h1 { font-size: 24px; }
     .status .hint { display: none; }
+    header .wrap { gap: 4px; padding-left: 16px; padding-right: 10px; }
+    #modeText { display: inline-block; max-width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+    .textbtn { padding: 6px 8px; }
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -304,7 +324,7 @@
   <div class="wrap">
     <section class="welcome" id="welcome">
       <h1 id="greeting">Press Space and talk.</h1>
-      <p>Press Space or click the microphone and talk, or type below. A few things to try:</p>
+      <p id="howTo">Press Space or click the microphone and talk, or type below. A few things to try:</p>
       <div class="chips">
         <button class="chip">Brief me</button>
         <button class="chip">Remind me in 10 minutes to stretch</button>
@@ -399,6 +419,15 @@
         <p class="note" id="enrollMsg" aria-live="polite"></p>
       </div>
     </div>
+    <div class="field" id="phoneField" hidden>
+      <span class="label">Your phone</span>
+      <div class="enroll">
+        <label class="toggle"><input id="phoneOn" type="checkbox"><span>Use Jarvis on my phone<small>Talk to Jarvis from anywhere, through Tailscale's private network. Only phones that scan the code below get in.</small></span></label>
+        <div class="phone-steps" id="phoneSteps" hidden></div>
+        <label class="toggle"><input id="alertsOn" type="checkbox"><span>Phone alerts<small>Reminders, warnings, your morning briefing, and answers you walked away from, on your lock screen.</small></span></label>
+        <div class="phone-steps" id="alertSteps" hidden></div>
+      </div>
+    </div>
     <div class="field">
       <label for="rate">Speaking speed <span id="rateVal"></span></label>
       <input id="rate" type="range" min="0.8" max="1.4" step="0.05">
@@ -420,8 +449,8 @@
 
 <div id="elsewhere" role="alertdialog" aria-labelledby="elsewhereTitle">
   <div>
-    <h2 id="elsewhereTitle">Jarvis is open in another window</h2>
-    <p>Only one window listens and speaks at a time, so you never hear two voices.</p>
+    <h2 id="elsewhereTitle">Jarvis is open somewhere else</h2>
+    <p>Jarvis moved to another window or your phone. Only one listens and speaks at a time, so you never hear two voices.</p>
     <button class="primary" id="useHere">Use Jarvis here</button>
   </div>
 </div>
@@ -708,6 +737,9 @@
   }
   function showBrain(s) {
     status = s; greet(); showVoiceSetup();
+    $("phoneField").hidden = !!s.remote;
+    if (matchMedia("(pointer: coarse)").matches) $("howTo").textContent = "Tap the microphone and talk, or type below. A few things to try:";
+    if (s.remote) document.querySelector('[aria-label="This computer"] h2').textContent = "Your laptop";
     if (s.reminders) loadReminders();
     loadToday();
     const local = s.private || !s.cloud;
@@ -724,7 +756,7 @@
   function connect() {
     if (es) es.close();
     es = new EventSource("/api/events?client=" + clientId);
-    es.onopen = () => fetch("/api/status").then((r) => r.json()).then(showBrain).catch(() => {});
+    es.onopen = () => { fetch("/api/status").then((r) => r.json()).then(showBrain).catch(() => {}); tellPresence(); };
     es.onerror = () => { $("mode").dataset.kind = "off"; $("modeText").textContent = "Disconnected"; };
     es.onmessage = (m) => {
       const ev = JSON.parse(m.data);
@@ -962,7 +994,7 @@
     if (e.code === "Space") { e.preventDefault(); listening ? stopListening() : startListening(); }
     if (e.key === "Escape") { stopSpeaking(true); stopListening(); $("rail").classList.remove("open"); }
   });
-  function openSettings() { $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
+  function openSettings() { if (!status.remote) loadPhone(); $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
   $("settingsBtn").onclick = openSettings;
   $("closeSettings").onclick = () => $("settings").close();
   $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) $("settings").close(); });
@@ -973,6 +1005,96 @@
   $("bargein").onchange = (e) => { prefs.bargein = e.target.checked; store.set("bargein", prefs.bargein); };
   $("testVoice").onclick = () => { stopSpeaking(false); speak("Good evening. Everything is running smoothly."); };
   $("resetBtn").onclick = () => { post("/api/reset"); $("log").innerHTML = ""; current = null; $("welcome").hidden = false; renderVoicePick(); $("settings").close(); };
+
+  // ---------- your phone: pairing and alerts ----------
+  // Only the laptop's own browser can see this: /api/phone holds the phone key.
+  let qrLib = null;
+  function loadQrLib() {
+    if (!qrLib) qrLib = new Promise((ok, fail) => {
+      const sc = document.createElement("script");
+      sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+      sc.onload = ok; sc.onerror = () => { qrLib = null; fail(); };
+      document.head.appendChild(sc);
+    });
+    return qrLib;
+  }
+  function qr(box, text) {
+    const holder = document.createElement("div"); holder.className = "qr"; box.appendChild(holder);
+    loadQrLib().then(() => new QRCode(holder, { text, width: 172, height: 172, correctLevel: QRCode.CorrectLevel.M }))
+      .catch(() => { holder.remove(); });
+    const link = document.createElement("div"); link.className = "link"; link.textContent = text; box.appendChild(link);
+  }
+  function para(box, html) { const p = document.createElement("div"); p.innerHTML = html; box.appendChild(p); return p; }
+  function button(box, label, fn, primary = false) {
+    const b = document.createElement("button"); b.type = "button"; b.className = primary ? "primary" : "secondary";
+    b.textContent = label; b.onclick = fn; box.appendChild(b); return b;
+  }
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function loadPhone(fresh = false, settings = null) {
+    let data;
+    try {
+      data = settings ? await post("/api/phone", settings)
+        : { phone: await (await fetch("/api/phone" + (fresh ? "?fresh=1" : ""))).json(), notify: status.notify };
+    } catch { return; }
+    if (!data || !data.phone || !data.phone.available) { $("phoneField").hidden = true; return; }
+    if (data.notify) status.notify = data.notify;
+    paintPhone(data.phone); paintAlerts(status.notify);
+  }
+  function paintPhone(p) {
+    $("phoneOn").checked = p.enabled;
+    const box = $("phoneSteps"); box.innerHTML = ""; box.hidden = !p.enabled;
+    if (!p.enabled) return;
+    const ts = p.tailscale;
+    if (p.pair_url) {
+      para(box, "Scan this with your phone's camera. Then, in the browser menu, choose <b>Add to Home Screen</b> so Jarvis opens like an app.");
+      qr(box, p.pair_url);
+      if (!p.https) para(box, "This address is plain http, so your phone's microphone may not work. Tailscale gives you https.");
+      const row = document.createElement("div"); row.className = "row"; box.appendChild(row);
+      button(row, "Sign out all phones", () => {
+        if (confirm("Every paired phone will need to scan a new code. Continue?")) loadPhone(true, { reset_key: true });
+      });
+      return;
+    }
+    const steps = [];
+    if (!ts.installed) steps.push('Install Tailscale on this laptop and on your phone from <b>tailscale.com/download</b>. It\'s free.');
+    if (!ts.running) steps.push("Open Tailscale on both and sign in with the same account.");
+    steps.push(`Run this once in PowerShell on this laptop: <code>${esc(p.serve_command)}</code>`);
+    para(box, "<ol>" + steps.map((t) => "<li>" + t + "</li>").join("") + "</ol>");
+    const row = document.createElement("div"); row.className = "row"; box.appendChild(row);
+    button(row, "Copy the command", () => navigator.clipboard && navigator.clipboard.writeText(p.serve_command));
+    button(row, "Check again", () => loadPhone(true), true);
+  }
+  function paintAlerts(n) {
+    $("alertsOn").checked = !!(n && n.enabled);
+    const box = $("alertSteps"); box.innerHTML = ""; box.hidden = !(n && n.enabled);
+    if (!n || !n.enabled) return;
+    para(box, `<ol><li>Install the free <b>ntfy</b> app on your phone.</li>
+      <li>Tap <b>+</b> and subscribe to <code>${esc(n.topic)}</code>${n.server !== "https://ntfy.sh" ? ` on server <code>${esc(n.server)}</code>` : ""}.</li>
+      <li>Press <b>Send a test</b> below.</li></ol>`);
+    para(box, "Keep the topic name private: anyone who knows it can read your alerts.");
+    const row = document.createElement("div"); row.className = "row"; box.appendChild(row);
+    const test = button(row, "Send a test", async () => {
+      test.disabled = true;
+      const r = await post("/api/notify/test");
+      test.textContent = r && r.ok ? "Sent. Check your phone" : "Couldn't send";
+      setTimeout(() => { test.disabled = false; test.textContent = "Send a test"; }, 4000);
+    }, true);
+    button(row, "New topic", () => {
+      if (confirm("Your phone will need to subscribe to the new topic. Continue?")) loadPhone(false, { new_topic: true });
+    });
+  }
+  $("phoneOn").onchange = (e) => loadPhone(true, { phone: e.target.checked });
+  $("alertsOn").onchange = (e) => loadPhone(false, { alerts: e.target.checked });
+
+  // Tell Jarvis whether this tab is on screen, so answers you walk away from reach your phone.
+  function tellPresence() {
+    if (!active) return;
+    fetch("/api/presence", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client: clientId, visible: !document.hidden }), keepalive: true }).catch(() => {});
+  }
+  document.addEventListener("visibilitychange", tellPresence);
+  if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
   // ---------- command center: vitals and health ----------
   const railVisible = () => getComputedStyle($("rail")).display !== "none";
