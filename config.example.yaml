@@ -91,6 +91,16 @@ brain:
   reindex_on_start: true           # picks up changed files in the background
 
 # Screen vision. First run: ollama pull qwen2.5vl:7b  (or llava:7b on smaller GPUs)
+# Know the whole laptop: a private, local index of every file, plus apps, programs and browser history.
+laptop:
+  enabled: true
+  folders: []                      # blank: your user folder plus every other drive (D:, E:...)
+  skip_folders: []                 # folder names to leave out, e.g. [Games, "Steam Library"]
+  read_contents: true              # index the words inside documents, notes and code
+  browser: true                    # Chrome and Edge history and bookmarks
+  rescan_hours: 6
+  index_file: ""                   # blank: ~/.jarvis/laptop.sqlite, or e.g. D:/jarvis-data/laptop.sqlite
+
 vision:
   enabled: true
   model: qwen2.5vl:7b

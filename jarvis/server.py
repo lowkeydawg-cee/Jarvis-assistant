@@ -286,8 +286,16 @@ class WebSession:
             "online": self.bot.online is not None,
             "city": self.bot.online.city if self.bot.online is not None else "",
             "phone": bool(self.phone and self.phone.enabled),
+            "laptop": self.laptop_status(),
             "notify": self.notifier.info() if self.notifier is not None else None,
         }
+
+    def laptop_status(self) -> dict | None:
+        idx = getattr(self.bot, "laptop", None)
+        if idx is None:
+            return None
+        return {"files": idx.count(), "scanning": idx.scanning, "progress": idx.progress,
+                "ready": idx.last_scan is not None}
 
     # ---- phone and alerts (changed only from the laptop itself) ---------------
 

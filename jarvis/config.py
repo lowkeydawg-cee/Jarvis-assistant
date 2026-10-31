@@ -123,6 +123,16 @@ DEFAULTS: dict[str, Any] = {
         "city": "",                    # or just say "I live in Kigali"
         "news_feed": "https://feeds.bbci.co.uk/news/world/rss.xml",
     },
+    # Know the whole laptop: a local index of every file, plus apps, programs and browser history.
+    "laptop": {
+        "enabled": True,
+        "folders": [],                 # blank: your user folder plus every other drive (D:, E:...)
+        "skip_folders": [],            # extra folder names to leave out, e.g. ["Games"]
+        "read_contents": True,         # index the words inside documents, notes and code
+        "browser": True,               # Chrome and Edge history and bookmarks
+        "rescan_hours": 6,
+        "index_file": "",              # blank: ~/.jarvis/laptop.sqlite. Point it at D: if C: is short of space
+    },
     "vision": {
         "enabled": False,
         "model": "qwen2.5vl:7b",

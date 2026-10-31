@@ -146,6 +146,18 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     if bot.notifier is not None:
         box.register(phone_tool(bot.notifier))
 
+    lap = cfg["laptop"]
+    if lap.get("enabled"):
+        from jarvis import laptop
+
+        index = laptop.LaptopIndex(lap.get("index_file") or data / "laptop.sqlite", lap.get("folders") or None,
+                                   lap.get("skip_folders") or (), bool(lap.get("read_contents", True)))
+        for tool in laptop.tools(index, bool(lap.get("browser", True))):
+            box.register(tool)
+        bot.laptop = index
+        index.start_background(float(lap.get("rescan_hours") or 6))
+        print(f"  [laptop] indexing {', '.join(index.roots)} in the background")
+
     servers = cfg["mcp"].get("servers") or {}
     if servers:
         from jarvis.mcp_client import MCPHub

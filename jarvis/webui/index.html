@@ -543,6 +543,7 @@
     <div class="vital"><span>Processor</span><span class="v" id="vCpu">–</span><div class="bar"><i id="bCpu"></i></div></div>
     <div class="vital"><span>Memory</span><span class="v" id="vMem">–</span><div class="bar"><i id="bMem"></i></div></div>
     <div class="vital"><span>Disk</span><span class="v" id="vDisk">–</span><div class="bar"><i id="bDisk"></i></div></div>
+    <div class="vital" id="knowRow" hidden title="Jarvis keeps a private index of the files on this laptop so it can find anything"><span>Knows</span><span class="v" id="vKnow">–</span></div>
     <div class="vital" id="batRow" hidden><span>Battery</span><span class="v" id="vBat">–</span><div class="bar"><i id="bBat"></i></div></div>
   </section>
   <section class="card" aria-label="Health">
@@ -1289,6 +1290,12 @@
     else $("vMem").textContent = "n/a";
     $("vDisk").textContent = `${Math.round(v.disk.free_gb)} GB free`; setBar("bDisk", v.disk.percent, 90);
     $("batRow").hidden = !v.battery;
+    fetch("/api/status").then((r) => r.json()).then((s) => {
+      const l = s.laptop; $("knowRow").hidden = !l;
+      if (!l) return;
+      $("vKnow").textContent = l.ready && !l.scanning ? `${l.files.toLocaleString()} files`
+        : `Learning… ${(l.scanning ? l.progress : l.files).toLocaleString()} files`;
+    }).catch(() => {});
     if (v.battery) {
       $("vBat").textContent = v.battery.percent + "%" + (v.battery.plugged ? " · charging" : "");
       const b = $("bBat"); b.style.width = v.battery.percent + "%";
