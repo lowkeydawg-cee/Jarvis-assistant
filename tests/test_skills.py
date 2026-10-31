@@ -169,7 +169,7 @@ def test_unrecognised_voice_gets_no_personal_answers(skills):
     messages, tools = model.calls[-1]
     context = " ".join(m["content"] for m in messages if m["role"] == "system")
     assert tools is None and "NOT the owner" in context and "drawer" not in context
-    bot.respond("tell me a joke", speaking_as={"owner": True, "score": 0.8})
+    bot.respond("run git status for me", speaking_as={"owner": True, "score": 0.8})
     messages, tools = model.calls[-1]
     context = " ".join(m["content"] for m in messages if m["role"] == "system")
     assert tools and "Saint" in context and "drawer" in context

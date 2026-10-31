@@ -131,3 +131,29 @@ def test_browser_history_and_bookmarks(tmp_path, monkeypatch):
     hits = laptop.history("tailscale")
     assert len(hits) == 1 and hits[0]["visits"] == 3
     assert laptop.history("old") == []  # older than 30 days
+
+
+def test_instant_answers_speak_names_not_paths(tmp_path, home):
+    from jarvis.online import KNOWLEDGE_SKIP
+    from jarvis.router import Router
+
+    idx = index(tmp_path, home)
+    idx.scan()
+    r = Router(routes=False)
+    laptop.add_routes(r, idx)
+    name, reply = r.answer("find my climate essay")
+    assert name == "laptop" and reply.startswith("I found it: ClimateEssay_final.docx in School")
+    assert r.answer("what's taking up space on my laptop")[1].startswith("Your biggest files: holiday.mp4 in Videos")
+    assert r.answer("what did I work on today")[1].startswith("Most recently changed:")
+    assert r.answer("look for zzqx nothing") is None  # nothing matched: the model gets a go
+    # Questions about "my" things never go to the Wikipedia shortcut.
+    assert KNOWLEDGE_SKIP.search("taking up space on my laptop") and not KNOWLEDGE_SKIP.search("capital of rwanda")
+
+
+def test_a_broken_pdf_does_not_stop_the_scan(tmp_path, home):
+    (home / "Documents/empty_scan.pdf").write_bytes(b"")
+    (home / "Documents/corrupt.pdf").write_bytes(b"%PDF-1.4 garbage")
+    idx = index(tmp_path, home)
+    idx.scan()
+    assert idx.search("climate")  # the rest of the laptop was still indexed
+    assert idx.search("empty_scan")  # and the broken file is still findable by name

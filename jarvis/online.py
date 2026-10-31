@@ -168,7 +168,9 @@ class Online:
 
 KNOWLEDGE_SKIP = re.compile(r"^(my|your|our|it|this|that|these|those|you|i|we|me|he|she|they|the time|the date|today|"
                             r"up|going on|happening|wrong|the weather|the news|the plan|\d)\b"
-                            r"|\b(plus|minus|times|divided|squared|percent of)\b")
+                            r"|\b(plus|minus|times|divided|squared|percent of)\b"
+                            # About the user, not general knowledge: "taking up space on my laptop".
+                            r"|\b(my|mine|i|me)\b")
 
 
 def add_online_routes(router, online: Online) -> None:
@@ -213,7 +215,7 @@ def add_online_routes(router, online: Online) -> None:
 
     def knowledge(m):
         q = next((v for k, v in m.groupdict().items() if v and k.startswith("q")), "")
-        if not q or KNOWLEDGE_SKIP.match(q):
+        if not q or KNOWLEDGE_SKIP.search(q):
             return None  # personal or vague: let the model handle it
         try:
             hit = online.lookup(q)

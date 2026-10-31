@@ -136,7 +136,7 @@ def extract_text(path: Path) -> str:
             return _office_text(path)[:MAX_CONTENT]
         if ext == ".pdf":
             return _pdf_text(path)[:MAX_CONTENT]
-    except (OSError, zipfile.BadZipFile, ValueError, KeyError):
+    except Exception:  # empty, corrupt or encrypted files (pypdf raises its own errors): skip the words
         return ""
     return ""
 
@@ -719,3 +719,32 @@ def tools(index: LaptopIndex, browser: bool = True) -> list:
                  {"type": "object", "properties": {"query": {"type": "string"}}}),
         ]
     return out
+
+
+# ---- instant answers ----------------------------------------------------------------
+# The common questions are answered from the index directly: no model, no cloud rate limit, and
+# spoken as names and folders rather than long paths.
+
+
+def _spoken(rows: list[dict], what: str) -> str:
+    parts = [f"{Path(r['path']).name} in {Path(r['path']).parent.name or r['path'][:3]}, "
+             f"{human_size(r['size'] or 0)}, changed {datetime.fromtimestamp(r['modified']):%d %B}" for r in rows]
+    return f"{what}: " + "; ".join(parts) + "."
+
+
+def add_routes(router, index: LaptopIndex) -> None:
+    def find(m):
+        q = re.sub(r"\b(on my (laptop|computer|pc)|please)\b", "", m.group("q")).strip()
+        rows = index.search(q, limit=4) if q else []
+        if not rows:
+            return None  # maybe not a file at all ("search for black holes"): let the model answer
+        return _spoken(rows, "I found it" if len(rows) == 1 else f"The best {len(rows)} matches")
+
+    router.add("laptop", r"(find|where is|wheres|look for|locate) (my |the |a )?(file |document )?"
+                         r"(called |named )?(?P<q>.+)", find)
+    router.add("laptop", r"((whats|what is) (taking up|using|eating) (all )?(my |the )?(disk |storage )?space|"
+                         r"(show|list) (my |the )?(biggest|largest) files)( (on|in) (my |the )?(laptop|computer|pc|drive|disk))?",
+               lambda m: _spoken(index.largest(limit=5), "Your biggest files") if index.count() else None)
+    router.add("laptop", r"(what|which) (files )?(did i|have i) (work on|change|edit|save)( recently| today| lately)?",
+               lambda m: _spoken(index.recent(days=1 if "today" in m.group(0) else 3, limit=5), "Most recently changed")
+               if index.recent(days=3, limit=1) else None)

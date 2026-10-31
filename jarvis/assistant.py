@@ -149,7 +149,10 @@ class Assistant:
             self.history.append({"role": "assistant", "content": reply})
             self.speaker.say(reply)
             return reply
-        tools = self.toolbox.specs() if self.tools_enabled and not self.is_guest else None
+        # Only the tools this conversation could need: the last few user messages decide, so a
+        # follow-up like "open it" still gets the file tools that the previous question needed.
+        recent = " ".join(m["content"] for m in self.history[-6:] if m.get("role") == "user")
+        tools = (self.toolbox.specs(recent) or None) if self.tools_enabled and not self.is_guest else None
         spoken: list[str] = []
         self.last_source = ""
 

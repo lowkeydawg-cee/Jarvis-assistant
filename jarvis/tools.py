@@ -168,8 +168,13 @@ class ToolBox:
     def register(self, tool: Tool) -> None:
         self.tools[tool.name] = tool
 
-    def specs(self) -> list[dict]:
-        return [tool.spec() for tool in self.tools.values()]
+    def specs(self, context: str | None = None) -> list[dict]:
+        """All tool specs, or with `context` only those the conversation could need (see toolpick)."""
+        if context is None:
+            return [tool.spec() for tool in self.tools.values()]
+        from jarvis.toolpick import pick
+
+        return [self.tools[n].spec() for n in pick(list(self.tools), context)]
 
     def call(self, name: str, arguments: dict) -> str:
         tool = self.tools.get(name)

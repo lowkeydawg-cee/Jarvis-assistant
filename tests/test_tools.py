@@ -45,3 +45,16 @@ def test_refused_commands_are_never_announced_or_confirmed():
     box = ToolBox(DEFAULTS["tools"], confirm=lambda c: asked.append(c) or True, announce=asked.append)
     assert box.call("run_command", {"command": "shutdown now"}).startswith("Refused")
     assert asked == []
+
+
+def test_only_relevant_tools_are_sent():
+    from jarvis.toolpick import pick
+
+    names = ["find_files", "read_file", "files__read_text_file", "get_weather", "add_reminder", "run_command",
+             "look_up", "brand_new_tool"]
+    weather = pick(names, "will it rain tomorrow")
+    assert "get_weather" in weather and "add_reminder" in weather and "find_files" not in weather
+    files = pick(names, "find my CV and read it")
+    assert {"find_files", "read_file", "files__read_text_file"} <= set(files) and "get_weather" not in files
+    # Tools without a group (general knowledge, anything new) are always available.
+    assert {"look_up", "brand_new_tool"} <= set(pick(names, "tell me a joke"))
