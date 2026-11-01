@@ -168,6 +168,9 @@ DEFAULTS: dict[str, Any] = {
         "disk_min_free_gb": 10,
         "calendar_ics": "",
         "meeting_lead_minutes": 10,
+        "evening_at": "21:00",         # evening wrap-up: tomorrow's plan and weather; "" turns it off
+        "stale_repo_days": 3,          # nudge when a repo has uncommitted work and no commit for this long; 0 = off
+        "downloads_nudge": True,       # weekly nudge when old installers pile up in Downloads
         "git_repos": [],
         "logs": [],
     },

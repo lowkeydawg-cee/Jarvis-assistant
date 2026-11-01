@@ -270,6 +270,26 @@ def make_notifier(bot: Assistant, cfg: dict) -> None:
     bot.notifier = Notifier(cfg["notify"], cfg["data_dir"])
 
 
+def evening_wrap(bot: Assistant) -> str:
+    """Tomorrow's plan and weather, and what you talked about today. Built without the model."""
+    parts = ["Evening wrap-up."]
+    if bot.skills is not None:
+        parts.append(bot.skills.schedule("tomorrow").replace(" tomorrow:", " tomorrow -", 1))
+    if bot.online is not None and bot.online.city:
+        try:
+            parts.append(bot.online.weather_text(when="tomorrow"))
+        except Exception:
+            pass
+    if bot.journal is not None:
+        from datetime import date
+
+        topics = [e["said"] for e in bot.journal.entries(date.today()) if len(e["said"]) > 12][-3:]
+        if topics:
+            parts.append("Today we talked about: " + "; ".join(t[:60] for t in topics) + ".")
+    parts.append("Good night.")
+    return " ".join(parts)
+
+
 def start_watchers(bot: Assistant, cfg: dict) -> None:
     from jarvis.watchers import Scheduler, build_watchers
 
@@ -290,6 +310,14 @@ def start_watchers(bot: Assistant, cfg: dict) -> None:
         if bot.notifier is not None:
             bot.notifier.send("alerts", message)
 
+    def evening() -> str:
+        text = evening_wrap(bot)
+        bot.post("say", text)
+        if bot.notifier is not None:
+            bot.notifier.send("briefing", text, title="Evening wrap-up")
+        return ""  # already delivered as a briefing, not as a warning
+
+    p["evening_wrap"] = evening
     quiet = tuple(p["quiet_hours"]) if p.get("quiet_hours") else None
     Scheduler(build_watchers(p), alert, quiet_hours=quiet,
               briefing_at=p.get("briefing_at"), on_briefing=briefing).start()

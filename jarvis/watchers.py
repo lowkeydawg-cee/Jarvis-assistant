@@ -253,6 +253,104 @@ class Scheduler:
         threading.Thread(target=loop, daemon=True, name="watchers").start()
 
 
+class StaleRepoWatcher(Watcher):
+    """Work left hanging: uncommitted changes in a repo that hasn't had a commit for days."""
+
+    interval = 3600
+
+    def __init__(self, repos: list[str], days: int = 3, run=subprocess.run):
+        self.repos = repos
+        self.days = days
+        self.run = run
+        self.told: dict[str, date] = {}
+
+    def check(self, now):
+        out = []
+        for repo in self.repos:
+            path = os.path.expanduser(repo)
+            if self.told.get(path) == now.date():
+                continue  # at most once a day per repo
+            try:
+                dirty = self.run(["git", "-C", path, "status", "--porcelain"], capture_output=True, text=True,
+                                 timeout=10).stdout.strip()
+                last = self.run(["git", "-C", path, "log", "-1", "--format=%ct"], capture_output=True, text=True,
+                                timeout=10).stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if not dirty or not last.isdigit():
+                continue
+            idle = (now - datetime.fromtimestamp(int(last))).days
+            if idle >= self.days:
+                self.told[path] = now.date()
+                n = len(dirty.splitlines())
+                out.append(f"{Path(path).name} has {n} uncommitted change{'s' if n != 1 else ''} and no commit for "
+                           f"{idle} days. Worth committing or tidying up?")
+        return out
+
+
+class DownloadsWatcher(Watcher):
+    """Old installers and archives piling up in Downloads. At most once a week."""
+
+    interval = 6 * 3600
+    JUNK = {".exe", ".msi", ".zip", ".rar", ".7z", ".iso", ".dmg", ".tar", ".gz"}
+
+    def __init__(self, folder: str | list[str] = "~/Downloads", min_gb: float = 2.0, older_days: int = 30):
+        folders = [folder] if isinstance(folder, str) else folder
+        self.folders = [os.path.expanduser(f) for f in folders]
+        self.min_bytes = min_gb * 1024 ** 3
+        self.older = timedelta(days=older_days)
+        self.last: date | None = None
+
+    def check(self, now):
+        if self.last and (now.date() - self.last).days < 7:
+            return []
+        total, count = 0, 0
+        for folder in self.folders:
+            try:
+                for entry in os.scandir(folder):
+                    if entry.is_file() and Path(entry.name).suffix.lower() in self.JUNK:
+                        st = entry.stat()
+                        if now - datetime.fromtimestamp(st.st_mtime) > self.older:
+                            total += st.st_size
+                            count += 1
+            except OSError:
+                continue
+        if total < self.min_bytes:
+            return []
+        self.last = now.date()
+        return [f"Your Downloads folder has {total / 1024 ** 3:.1f} GB in {count} old installers and archives "
+                f"from over a month ago. Want me to list them so you can clear some space?"]
+
+
+def downloads_folders() -> list[str]:
+    """~/Downloads plus a Downloads folder at the root of any other drive (D:\\Downloads is common)."""
+    found = [os.path.expanduser("~/Downloads")]
+    if os.name == "nt":
+        import string
+
+        found += [f"{d}:\\Downloads" for d in string.ascii_uppercase[3:] if os.path.isdir(f"{d}:\\Downloads")]
+    return found
+
+
+class DailyNote(Watcher):
+    """Something said once a day at a set time, such as the evening wrap-up."""
+
+    interval = 60
+
+    def __init__(self, at: str, make: Callable[[], str]):
+        self.hh, self.mm = (int(x) for x in at.split(":"))
+        self.make = make
+        self.last: date | None = None
+
+    def check(self, now):
+        due = now.replace(hour=self.hh, minute=self.mm, second=0, microsecond=0)
+        if self.last == now.date() or not (due <= now <= due + timedelta(hours=2)):
+            return []
+        self.last = now.date()
+        text = self.make()
+        return [text] if text else []
+
+
 def build_watchers(cfg: dict) -> list[Watcher]:
     watchers: list[Watcher] = []
     if cfg.get("battery", True):
@@ -264,4 +362,10 @@ def build_watchers(cfg: dict) -> list[Watcher]:
     for log in cfg.get("logs") or []:
         watchers.append(LogWatcher(log["path"], log.get("pattern", LogWatcher.__init__.__defaults__[0]),
                                    log.get("name", "")))
+    if cfg.get("git_repos") and int(cfg.get("stale_repo_days", 3)) > 0:
+        watchers.append(StaleRepoWatcher(cfg["git_repos"], int(cfg.get("stale_repo_days", 3))))
+    if cfg.get("downloads_nudge", True):
+        watchers.append(DownloadsWatcher(cfg.get("downloads_folder") or downloads_folders()))
+    if cfg.get("evening_at") and callable(cfg.get("evening_wrap")):
+        watchers.append(DailyNote(cfg["evening_at"], cfg["evening_wrap"]))
     return watchers
