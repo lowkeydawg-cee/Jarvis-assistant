@@ -42,6 +42,10 @@ DEFAULTS: dict[str, Any] = {
     "user": {
         "name": "",                    # used until you teach Jarvis your voice (which asks your name)
     },
+    # Memory of past conversations: a local journal plus a short summary of each day.
+    "journal": {
+        "enabled": True,
+    },
     "reminders": {
         "enabled": True,
     },

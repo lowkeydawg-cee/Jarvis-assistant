@@ -50,6 +50,17 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
 
     bot.memory = Memory(data / "memory.json")
     bot.owner_name = bot.owner_name or cfg["user"].get("name", "")
+    if cfg["journal"]["enabled"]:
+        from jarvis.journal import Journal, add_journal_routes, journal_tool
+
+        def summarize(prompt: str) -> str:
+            return llm.chat_stream([{"role": "user", "content": prompt}]).get("content", "")
+
+        bot.journal = Journal(data, summarize=summarize)
+        if bot.router:
+            add_journal_routes(bot.router, bot.journal)
+        box.register(journal_tool(bot.journal))
+        bot.journal.start()
     if cfg["reminders"]["enabled"]:
         from jarvis.reminders import ReminderService, ReminderStore, announcement
         from jarvis.skills import Skills
@@ -191,6 +202,12 @@ def phone_tool(notifier) -> Tool:
     )
 
 
+def telegram_assistant(bot: Assistant, llm, speaker, listen, cfg: dict) -> Assistant:
+    tg = bot.share_with(Assistant(llm, speaker, listen, cfg))
+    tg.channel = "telegram"
+    return tg
+
+
 def start_telegram(bot: Assistant, cfg: dict, llm) -> None:
     """Chat with Jarvis from anywhere through your own Telegram bot; alerts go there too."""
     import os
@@ -204,7 +221,7 @@ def start_telegram(bot: Assistant, cfg: dict, llm) -> None:
     try:
         bridge = TelegramBridge(
             token, Path(cfg["data_dir"]).expanduser() / "telegram.json",
-            make_assistant=lambda speaker, listen: bot.share_with(Assistant(llm, speaker, listen, cfg)),
+            make_assistant=lambda speaker, listen: telegram_assistant(bot, llm, speaker, listen, cfg),
             transcribe=transcriber_for(cfg["stt"]),
         )
         bridge.start()

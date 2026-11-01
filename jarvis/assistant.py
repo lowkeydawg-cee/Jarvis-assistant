@@ -70,6 +70,8 @@ class Assistant:
         self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
         self.notifier = None  # jarvis.notify.Notifier: alerts on your phone
         self.laptop = None  # jarvis.laptop.LaptopIndex: every file on the laptop
+        self.journal = None  # jarvis.journal.Journal: memory of past conversations
+        self.channel = "app"  # where this conversation happens: app, telegram...
         self.telegram = None  # jarvis.telegram.TelegramBridge when a bot token is set
 
     def share_with(self, other: "Assistant") -> "Assistant":
@@ -77,6 +79,7 @@ class Assistant:
         other.toolbox.tools = self.toolbox.tools
         other.router, other.memory, other.skills, other.online = self.router, self.memory, self.skills, self.online
         other.owner_name, other.notifier = self.owner_name, self.notifier
+        other.laptop, other.journal = self.laptop, self.journal
         return other
 
     # ---- inbox -----------------------------------------------------------
@@ -146,7 +149,19 @@ class Assistant:
                 lines.append(TRADING_HINT)
         return [{"role": "system", "content": "\n\n".join(lines)}] if lines else []
 
+    AUTOMATED = ("Give me my briefing", "Write my morning briefing", "I pressed the screen hotkey")
+
     def respond(self, user_text: str, speaking_as: dict | None = None) -> str:
+        """Run one turn, then note it in the conversation journal (owner's turns only)."""
+        reply = self._respond(user_text, speaking_as)
+        if self.journal is not None and not self.is_guest and not user_text.startswith(self.AUTOMATED):
+            try:
+                self.journal.add(user_text, reply, self.last_source, self.channel)
+            except OSError as exc:
+                print(f"  [journal] couldn't save: {exc}")
+        return reply
+
+    def _respond(self, user_text: str, speaking_as: dict | None = None) -> str:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
         self.speaking_as = speaking_as
         self.history.append({"role": "user", "content": user_text})
