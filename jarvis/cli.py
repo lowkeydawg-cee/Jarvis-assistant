@@ -172,6 +172,7 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         print(f"  [laptop] indexing {', '.join(index.roots)} in the background")
 
     servers = cfg["mcp"].get("servers") or {}
+    hub = None
     if servers:
         from jarvis.mcp_client import MCPHub
 
@@ -179,6 +180,14 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         hub.start()
         print(f"  [mcp] {hub.register(box)} tools ready")
         closers.append(hub)
+    if bot.router:
+        from jarvis.trading import add_trading_routes
+
+        configured = "trading" in servers
+        error = hub.errors.get("trading") if hub else None
+        n = add_trading_routes(bot.router, box.call, list(box.tools), configured, error)
+        if configured:
+            print(f"  [trading] {'connected' if not error else 'NOT connected: ' + error}, {n} instant answers")
 
     return closers
 
