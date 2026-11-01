@@ -30,6 +30,7 @@ GROUPS: dict[str, str] = {
     "weather": r"weather|rain|temperature|forecast|hot|cold|sunny|umbrella|wind",
     "news": r"news|headline|happening|world|latest",
     "screen": r"screen|look at|see this|this error|what's this|whats this",
+    "email": r"e-?mails?|mail|inbox|gmail|message from|wrote to me|reply to|draft|recruiter|newsletter|unread",
 }
 # Tool name (or "prefix*") -> group. Names not listed here are always sent.
 TOOL_GROUP: dict[str, str] = {
@@ -47,6 +48,7 @@ TOOL_GROUP: dict[str, str] = {
     "get_weather": "weather",
     "news_headlines": "news",
     "look_at_screen": "screen",
+    "check_email": "email", "search_email": "email", "read_email": "email", "draft_email": "email",
 }
 _COMPILED = {g: re.compile(p, re.I) for g, p in GROUPS.items()}
 

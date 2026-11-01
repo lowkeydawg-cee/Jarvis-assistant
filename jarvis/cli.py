@@ -80,6 +80,17 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     for tool in calendar_tool(bot.calendar):
         box.register(tool)
 
+    if cfg["email"]["enabled"]:
+        from jarvis.mail import add_mail_routes, mail_tools, mailbox_from_env
+
+        bot.mailbox = mailbox_from_env(cfg["email"])
+        if bot.mailbox is not None:
+            if bot.router:
+                add_mail_routes(bot.router, bot.mailbox)
+            for tool in mail_tools(bot.mailbox):
+                box.register(tool)
+            print(f"  [email] connected to {bot.mailbox.address} (read and draft only)")
+
     if cfg["reminders"]["enabled"]:
         from jarvis.reminders import ReminderService, ReminderStore, announcement
         from jarvis.skills import Skills

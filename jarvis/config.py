@@ -42,6 +42,14 @@ DEFAULTS: dict[str, Any] = {
     "user": {
         "name": "",                    # used until you teach Jarvis your voice (which asks your name)
     },
+    # Gmail through an app password (docs/EMAIL.md): check, search, read, and save drafts. Never sends.
+    "email": {
+        "enabled": True,               # only active once GMAIL_ADDRESS and GMAIL_APP_PASSWORD are saved
+        "address_env": "GMAIL_ADDRESS",
+        "password_env": "GMAIL_APP_PASSWORD",
+        "imap_host": "imap.gmail.com",
+        "drafts_folder": "[Gmail]/Drafts",
+    },
     # Memory of past conversations: a local journal plus a short summary of each day.
     "journal": {
         "enabled": True,

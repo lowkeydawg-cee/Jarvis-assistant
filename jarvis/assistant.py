@@ -33,7 +33,8 @@ _NO = re.compile(r"\b(no|nope|don't|do not|stop|cancel|never mind|wait)\b", re.I
 _EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down|that's all)\b", re.I)
 
 
-PERSONAL_ROUTES = {"notes", "briefing", "reminder", "schedule", "cancel", "snooze", "remember", "recall", "forget"}
+PERSONAL_ROUTES = {"notes", "briefing", "reminder", "schedule", "cancel", "snooze", "remember", "recall", "forget",
+                   "email", "calendar", "journal", "laptop"}
 
 
 def is_yes(text: str) -> bool:
@@ -71,6 +72,7 @@ class Assistant:
         self.notifier = None  # jarvis.notify.Notifier: alerts on your phone
         self.laptop = None  # jarvis.laptop.LaptopIndex: every file on the laptop
         self.calendar = None  # jarvis.calendar_feed.CalendarFeed: the user's real calendar
+        self.mailbox = None  # jarvis.mail.Mailbox: Gmail, read and draft only
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
         self.telegram = None  # jarvis.telegram.TelegramBridge when a bot token is set
