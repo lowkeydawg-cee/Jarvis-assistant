@@ -105,8 +105,14 @@ class LogWatcher(Watcher):
         return [f"Something failed in {self.name}. The first error says: {hits[0][:160]}"]
 
 
-def load_events(ics_path: str | Path, day: date) -> list[tuple[datetime, str]]:
-    """(start, title) for events on `day` in a local .ics calendar file, sorted."""
+def load_events(ics_path, day: date) -> list[tuple[datetime, str]]:
+    """(start, title) for events on `day`, sorted.
+
+    `ics_path` is a local .ics file, or a CalendarFeed (a Google Calendar secret address,
+    repeating events included) that the CLI passes in so a calendar set in Settings works at once.
+    """
+    if hasattr(ics_path, "events"):
+        return ics_path.events(day)
     path = Path(os.path.expanduser(str(ics_path)))
     if not path.exists():
         return []

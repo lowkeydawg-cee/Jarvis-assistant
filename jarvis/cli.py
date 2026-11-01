@@ -25,11 +25,19 @@ def build_brain(cfg: dict, llm: OllamaClient):
     )
 
 
+def proactive_cfg(bot: Assistant, cfg: dict) -> dict:
+    """The proactive settings, with the live calendar (set in Settings) in place of a fixed .ics path."""
+    p = dict(cfg["proactive"])
+    if getattr(bot, "calendar", None) is not None and bot.calendar.source:
+        p["calendar_ics"] = bot.calendar
+    return p
+
+
 def day_facts(bot: Assistant, cfg: dict) -> str:
     """Facts for the briefing: the watchers' (time, repos, disk) plus today's schedule."""
     from jarvis.watchers import briefing_facts
 
-    facts = briefing_facts(cfg["proactive"])
+    facts = briefing_facts(proactive_cfg(bot, cfg))
     if bot.online is not None and bot.online.city:
         try:
             facts += "\n" + bot.online.weather_text()
@@ -61,6 +69,17 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             add_journal_routes(bot.router, bot.journal)
         box.register(journal_tool(bot.journal))
         bot.journal.start()
+
+    from jarvis.calendar_feed import CalendarFeed, calendar_routes, calendar_tool
+
+    # The real calendar: a secret iCal address saved from Settings, or proactive.calendar_ics.
+    # Its routes go first, so "put X on my calendar" isn't taken for a Jarvis-only reminder.
+    bot.calendar = CalendarFeed(data / "calendar.json", default_source=cfg["proactive"].get("calendar_ics") or "")
+    if bot.router:
+        calendar_routes(bot.router, bot.calendar)
+    for tool in calendar_tool(bot.calendar):
+        box.register(tool)
+
     if cfg["reminders"]["enabled"]:
         from jarvis.reminders import ReminderService, ReminderStore, announcement
         from jarvis.skills import Skills
@@ -77,6 +96,7 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
 
         service = ReminderService(store, fire)
         bot.skills = Skills(store, bot.memory, service)
+        bot.skills.calendar = bot.calendar
         if bot.router:
             bot.skills.add_routes(bot.router)
         for tool in bot.skills.tools():
@@ -242,7 +262,10 @@ def make_notifier(bot: Assistant, cfg: dict) -> None:
 def start_watchers(bot: Assistant, cfg: dict) -> None:
     from jarvis.watchers import Scheduler, build_watchers
 
-    p = cfg["proactive"]
+    p = dict(cfg["proactive"])
+    if getattr(bot, "calendar", None) is not None:
+        # The live calendar, so a calendar connected later in Settings gets meeting alerts without a restart.
+        p["calendar_ics"] = bot.calendar
 
     def briefing() -> None:
         facts = day_facts(bot, cfg)

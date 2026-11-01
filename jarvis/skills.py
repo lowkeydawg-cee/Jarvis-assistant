@@ -31,12 +31,16 @@ def _confirm(what: str, due: datetime, repeat: str, kind: str, now: datetime) ->
     return f"Okay, I'll remind you to {second_person(what)} {when_text(due, now, repeat)}."
 
 
-def agenda(store: ReminderStore, day: datetime, label: str, now: datetime) -> str:
+def agenda(store: ReminderStore, day: datetime, label: str, now: datetime, calendar=None) -> str:
+    """Reminders plus real calendar events (when a calendar is connected) for one day, in time order."""
     start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-    items = [r for r in store.upcoming() if start <= r.when < start + timedelta(days=1)]
+    items = [(r.when, r.text) for r in store.upcoming() if start <= r.when < start + timedelta(days=1)]
+    if calendar is not None:
+        items += calendar.events(start.date())
+    items.sort()
     if not items:
         return f"Nothing on your schedule {label}."
-    parts = [f"at {clock_text(r.when)}, {r.text[:1].lower() + r.text[1:]}" for r in items[:6]]
+    parts = [f"at {clock_text(when)}, {text[:1].lower() + text[1:]}" for when, text in items[:6]]
     head = f"You have {len(items)} thing{'s' if len(items) != 1 else ''} {label}"
     return f"{head}: " + "; ".join(parts) + "."
 
@@ -49,6 +53,7 @@ class Skills:
         self.service = service
         self.now = now
         self.pending: tuple[str, str, float] | None = None  # (what, kind, asked at)
+        self.calendar = None  # jarvis.calendar_feed.CalendarFeed: real calendar events in the agenda
 
     # ---- actions shared by routes and tools ------------------------------
 
@@ -82,7 +87,7 @@ class Skills:
     def schedule(self, when: str = "today") -> str:
         now = self.now()
         if "tomorrow" in when:
-            return agenda(self.store, now + timedelta(days=1), "tomorrow", now)
+            return agenda(self.store, now + timedelta(days=1), "tomorrow", now, self.calendar)
         if "week" in when or "all" in when or "reminders" in when:
             items = self.store.upcoming(now + timedelta(days=7))
             if not items:
@@ -93,8 +98,8 @@ class Skills:
         for i, d in enumerate(DAYS):
             if d in when:
                 day = now + timedelta(days=(i - now.weekday()) % 7)
-                return agenda(self.store, day, f"on {d.title()}", now)
-        return agenda(self.store, now, "today", now)
+                return agenda(self.store, day, f"on {d.title()}", now, self.calendar)
+        return agenda(self.store, now, "today", now, self.calendar)
 
     def cancel(self, query: str) -> str:
         if re.search(r"\ball\b", query):

@@ -70,6 +70,7 @@ class Assistant:
         self.on_reminder: Callable | None = None  # extra alert when a reminder fires (the web page uses it)
         self.notifier = None  # jarvis.notify.Notifier: alerts on your phone
         self.laptop = None  # jarvis.laptop.LaptopIndex: every file on the laptop
+        self.calendar = None  # jarvis.calendar_feed.CalendarFeed: the user's real calendar
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
         self.telegram = None  # jarvis.telegram.TelegramBridge when a bot token is set

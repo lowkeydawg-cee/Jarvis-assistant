@@ -22,7 +22,7 @@ GROUPS: dict[str, str] = {
     "commands": r"run|command|git|status|version|ping|system|cpu|memory|\bram\b|uptime|process|terminal|pip|npm|python|node",
     "phone": r"phone|send|text me|notify|message me|telegram",
     "briefing": r"brief|my day|today|morning|agenda|schedule",
-    "reminders": r"remind|reminder|schedule|alarm|calendar|agenda|plan|tomorrow|tonight|morning|evening|"
+    "reminders": r"remind|reminder|schedule|alarm|calendar|agenda|plan|meeting|appointment|class|event|tomorrow|tonight|morning|evening|"
                  r"\bat \d|\bin \d|minute|hour|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
                  r"cancel|snooze|don'?t let me forget|ping me",
     "memory": r"remember|don'?t forget|note that|keep in mind|my name|i like|i prefer",
@@ -41,6 +41,7 @@ TOOL_GROUP: dict[str, str] = {
     "send_to_phone": "phone",
     "daily_briefing": "briefing",
     "add_reminder": "reminders", "list_reminders": "reminders", "cancel_reminder": "reminders",
+    "calendar_events": "reminders", "add_to_google_calendar": "reminders",
     "remember_fact": "memory",
     "search_notes": "notes",
     "get_weather": "weather",

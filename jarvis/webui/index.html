@@ -591,6 +591,12 @@
         <div class="phone-steps" id="tgSteps"></div>
       </div>
     </div>
+    <div class="field" id="calField" hidden>
+      <span class="label">Your calendar</span>
+      <div class="enroll">
+        <div class="phone-steps" id="calSteps"></div>
+      </div>
+    </div>
     <div class="field">
       <label for="rate">Speaking speed <span id="rateVal"></span></label>
       <input id="rate" type="range" min="0.8" max="1.4" step="0.05">
@@ -1157,7 +1163,7 @@
     if (e.code === "Space") { e.preventDefault(); listening ? stopListening() : startListening(); }
     if (e.key === "Escape") { stopSpeaking(true); stopListening(); $("rail").classList.remove("open"); }
   });
-  function openSettings() { if (!status.remote) { loadPhone(); loadTelegram(); } $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
+  function openSettings() { if (!status.remote) { loadPhone(); loadTelegram(); loadCalendar(); } $("rate").value = prefs.rate; $("handsfree").checked = prefs.handsfree; $("bargein").checked = prefs.bargein; showRate(); $("settings").showModal(); }
   $("settingsBtn").onclick = openSettings;
   $("closeSettings").onclick = () => $("settings").close();
   $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) $("settings").close(); });
@@ -1193,6 +1199,33 @@
     b.textContent = label; b.onclick = fn; box.appendChild(b); return b;
   }
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function loadCalendar() {
+    const box = $("calSteps");
+    let c;
+    try { const r = await fetch("/api/calendar"); if (!r.ok) return; c = await r.json(); } catch { return; }
+    $("calField").hidden = false;
+    box.innerHTML = "";
+    if (c.connected) {
+      para(box, c.error ? `Connected, but the last read failed: ${esc(c.error)}`
+        : `Connected. ${c.today} event${c.today === 1 ? "" : "s"} today, ${c.week} this week. They're in your schedule, briefing and meeting alerts.`);
+      button(box, "Disconnect", async () => { await post("/api/calendar", { source: "" }); loadCalendar(); });
+      return;
+    }
+    para(box, "Show your real events in Jarvis. In Google Calendar on the web: Settings, pick your calendar, "
+      + "then copy <b>Secret address in iCal format</b> and paste it here. It only lets Jarvis read.");
+    const f = document.createElement("form");
+    f.innerHTML = '<input placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" aria-label="Calendar address" style="flex:1;min-width:0;border:0;background:none;color:inherit;font:inherit;font-size:14px;padding:6px;outline:none"><button class="secondary" type="submit">Connect</button>';
+    const msg = para(box, "");
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const source = f.querySelector("input").value.trim(); if (!source) return;
+      msg.textContent = "Checking the calendar…";
+      const r = await post("/api/calendar", { source });
+      if (r && r.error) msg.textContent = r.error; else loadCalendar();
+    };
+    box.insertBefore(f, msg);
+  }
 
   async function loadTelegram() {
     const box = $("tgSteps");

@@ -435,6 +435,9 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._json({**session.status(), "remote": access == "phone"})
             if path == "/api/phone" and access == "local":  # it holds the key, so never shown on a phone
                 return self._json(session.phone_info(refresh="fresh" in url.query))
+            if path == "/api/calendar" and access == "local":  # the secret address stays on the laptop
+                c = session.bot.calendar
+                return self._json(c.status() if c else {"connected": False})
             if path == "/api/telegram" and access == "local":  # holds the pairing code
                 t = session.bot.telegram
                 return self._json(t.status() if t else {"enabled": False})
@@ -475,6 +478,17 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 if access != "local":
                     return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
                 return self._json(session.phone_settings(body))
+            elif path == "/api/calendar":
+                if access != "local":
+                    return self._json({"error": "Change the calendar on the laptop."}, HTTPStatus.FORBIDDEN)
+                c = session.bot.calendar
+                if c is None:
+                    return self._json({"error": "Calendar support isn't loaded."}, HTTPStatus.CONFLICT)
+                try:
+                    c.set_source(str(body.get("source", "")))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return self._json(c.status())
             elif path == "/api/telegram/unlink":
                 if access != "local":
                     return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
