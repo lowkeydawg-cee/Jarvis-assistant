@@ -281,3 +281,30 @@ def test_instant_answers_are_labelled_instant(web):
     events.wait_for(lambda e: e.get("type") == "sentence" and e["text"].startswith("It's"))
     done = events.wait_for(lambda e: e.get("type") == "state" and e.get("state") == "idle")
     assert done["provider"] == "instant"
+
+
+def test_busy_cloud_model_falls_back_to_the_next_cloud_model_before_local():
+    from jarvis.cloud import CloudError, HybridLLM
+
+    class Busy:
+        model = "openai/gpt-oss-120b"
+
+        def chat_stream(self, messages, tools=None, on_text=None):
+            raise CloudError("Cloud model returned 429: rate limit")
+
+    class Ok:
+        model = "qwen/qwen3.8-27b"
+
+        def chat_stream(self, messages, tools=None, on_text=None):
+            on_text and on_text("Hi.")
+            return {"role": "assistant", "content": "Hi."}
+
+    class Local:
+        model = "llama3.2"
+
+        def chat_stream(self, *a, **k):
+            raise AssertionError("the slow local model should not be needed")
+
+    llm = HybridLLM(Local(), Busy(), log=lambda m: None, backups=[Ok()])
+    assert llm.chat_stream([{"role": "user", "content": "hi"}])["content"] == "Hi."
+    assert llm.last_provider == "cloud"

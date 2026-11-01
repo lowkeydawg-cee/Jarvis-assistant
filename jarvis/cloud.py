@@ -162,10 +162,14 @@ class HybridLLM:
     """
 
     def __init__(self, local: OllamaClient, cloud: OpenAICompatClient | None, private: bool = False,
-                 log: Callable[[str], None] = print, local_tools: bool = True):
+                 log: Callable[[str], None] = print, local_tools: bool = True,
+                 backups: list[OpenAICompatClient] | None = None):
         self.local = local
         self.local_tools = local_tools
         self.cloud = cloud
+        # Other cloud models to try before the slow local one. Groq rate-limits each model separately,
+        # so a second model roughly doubles the free questions per minute.
+        self.backups = backups or []
         self.private = private
         self.log = log
         self.last_provider = ""
@@ -204,14 +208,15 @@ class HybridLLM:
                 if on_text:
                     on_text(piece)
 
-            try:
-                msg = self.cloud.chat_stream(messages, tools, relay)
-                self.last_provider = "cloud"
-                return msg
-            except CloudError as exc:
-                if started:
-                    raise  # half a reply was already spoken; don't start over in another voice
-                self.log(f"  [hybrid] cloud failed, using local model: {exc}")
+            for client in [self.cloud, *self.backups]:
+                try:
+                    msg = client.chat_stream(messages, tools, relay)
+                    self.last_provider = "cloud"
+                    return msg
+                except CloudError as exc:
+                    if started:
+                        raise  # half a reply was already spoken; don't start over in another voice
+                    self.log(f"  [hybrid] {client.model} failed ({str(exc)[:80]}), trying the next brain")
         if not self.local_tools:
             # Without tools, the full persona (all about tools) only slows a small model and confuses it.
             from jarvis.persona import lite_system_prompt
@@ -252,4 +257,7 @@ def build_llm(cfg: dict, log: Callable[[str], None] = print):
         return HybridLLM(local, None, log=log, local_tools=local_tools)
     cloud = OpenAICompatClient(cc["base_url"], key, cc["model"], c["temperature"],
                                timeout=int(cc.get("timeout", 60)))
-    return HybridLLM(local, cloud, private=bool(c.get("private", False)), log=log, local_tools=local_tools)
+    backups = [OpenAICompatClient(cc["base_url"], key, m, c["temperature"], timeout=int(cc.get("timeout", 60)))
+               for m in cc.get("backup_models") or [] if m and m != cc["model"]]
+    return HybridLLM(local, cloud, private=bool(c.get("private", False)), log=log, local_tools=local_tools,
+                     backups=backups)

@@ -25,6 +25,9 @@ DEFAULTS: dict[str, Any] = {
         "cloud": {
             "base_url": "https://api.groq.com/openai/v1",
             "model": "openai/gpt-oss-120b",  # Groq retired Llama 3.3 70B in 2026
+            # Tried in order when the main model is busy (rate limits are per model) or gone,
+            # before falling back to the slow local model.
+            "backup_models": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"],
             "api_key_env": "GROQ_API_KEY",
             "api_key": "",
             "timeout": 60,
