@@ -134,6 +134,12 @@ tests/                  40 tests, no models, mic or API key needed
 
 ## Setup
 
+**Windows, the quick way:** double-click `setup.bat`. It checks for Python and Ollama (and offers to
+install them), installs Jarvis, downloads the voices and models, writes a `config.yaml` that fits the
+laptop (a smaller model under 12 GB of RAM, your Documents as notes), asks for an optional free Groq
+key, can make Jarvis start when you sign in, and finishes with a health check. Running it again is
+safe: it keeps your config, keys and models. The manual steps below do the same thing by hand.
+
 You need Python 3.10 or newer. Disk use depends on what you turn on: about 6 GB for the basics, plus about 6 GB more for vision.
 
 ### 1. Install Ollama and the models
