@@ -603,6 +603,7 @@
     </div>
     <label class="toggle"><input id="private" type="checkbox"><span>Private mode<small id="privateNote">Keep all thinking on this computer.</small></span></label>
     <label class="toggle"><input id="handsfree" type="checkbox"><span>Hands-free<small>Start listening again after each reply.</small></span></label>
+    <label class="toggle" id="wakeRow" hidden><input id="wakeOn" type="checkbox"><span>Say "Hey Jarvis"<small id="wakeNote">The laptop listens for "Hey Jarvis", offline, then Jarvis starts listening. Keeps the laptop microphone open.</small></span></label>
     <label class="toggle"><input id="bargein" type="checkbox"><span>Interrupt by talking<small>Talk over Jarvis to stop it. Use headphones, or it may hear itself.</small></span></label>
     <div class="field">
       <span class="label">Theme</span>
@@ -905,7 +906,7 @@
     $("greeting").textContent = status.owner ? `${part}, ${status.owner}.` : `${part}.`;
   }
   function showBrain(s) {
-    status = s; greet(); showVoiceSetup();
+    status = s; greet(); showVoiceSetup(); showWake();
     $("phoneField").hidden = !!s.remote;
     if (matchMedia("(pointer: coarse)").matches) $("howTo").textContent = "Tap the microphone and talk, or type below. A few things to try:";
     if (s.remote) document.querySelector('[aria-label="This computer"] h2').textContent = "Your laptop";
@@ -954,6 +955,9 @@
         if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
       } else if (ev.type === "confirm_done") {
         confirming = false; const a = document.querySelector(".ask"); a && a.remove(); current = null; render();
+      } else if (ev.type === "wake") {
+        // The laptop heard "Hey Jarvis". Only the laptop's own page answers, never a phone.
+        if (!status.remote && !listening) { chime(); stopSpeaking(true); setTimeout(() => startListening(), 250); }
       } else if (ev.type === "speaker") {
         markSpeaker(ev);
       } else if (ev.type === "reminder") {
@@ -1171,6 +1175,32 @@
   $("voice").onchange = (e) => { chooseVoice(e.target.value); store.set("voiceChosen", true); $("voicePick").hidden = true; };
   $("rate").oninput = (e) => { prefs.rate = Number(e.target.value); store.set("rate", prefs.rate); showRate(); };
   $("handsfree").onchange = (e) => { prefs.handsfree = e.target.checked; store.set("handsfree", prefs.handsfree); };
+  function showWake() {
+    const w = status.wake || {};
+    $("wakeRow").hidden = !w.available || status.remote;
+    $("wakeOn").checked = !!w.enabled;
+    $("wakeNote").textContent = w.error ? `Couldn't start: ${w.error}`
+      : "The laptop listens for “Hey Jarvis”, offline, then Jarvis starts listening. Keeps the laptop microphone open.";
+  }
+  $("wakeOn").onchange = async (e) => {
+    const r = await post("/api/wake", { enabled: e.target.checked });
+    if (r && r.error) { e.target.checked = false; $("wakeNote").textContent = r.error; }
+    else { status.wake = r; showWake(); }
+  };
+  function chime() {  // a soft two-note "I'm listening"
+    try {
+      const ctx = new AudioContext();
+      [660, 880].forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+        const t = ctx.currentTime + i * 0.12;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        o.start(t); o.stop(t + 0.2);
+      });
+      setTimeout(() => ctx.close(), 600);
+    } catch {}
+  }
   $("bargein").onchange = (e) => { prefs.bargein = e.target.checked; store.set("bargein", prefs.bargein); };
   $("testVoice").onclick = () => { stopSpeaking(false); speak("Good evening. Everything is running smoothly."); };
   $("resetBtn").onclick = () => { post("/api/reset"); $("log").innerHTML = ""; current = null; $("welcome").hidden = false; renderVoicePick(); $("settings").close(); };

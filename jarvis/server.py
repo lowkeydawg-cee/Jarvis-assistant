@@ -116,6 +116,7 @@ class WebSession:
         self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
         self.skills = None  # jarvis.skills.Skills when reminders are on
         self.phone = None  # jarvis.phone.Phone: lets a paired phone use Jarvis
+        self.wake = None  # jarvis.wakeweb.WakeListener: "Hey Jarvis" on the laptop microphone
         self.port = 0
         self.visible: dict[str, bool] = {}  # is each tab on screen? (reported by the page)
         self._asked = False  # the person asked something since the worker last looked
@@ -283,6 +284,7 @@ class WebSession:
             "voice": {"available": self.voice is not None,
                       "enrolled": bool(self.voice and self.voice.enrolled)},
             "reminders": self.skills is not None,
+            "wake": self.wake.status() if self.wake is not None else {"available": False},
             "online": self.bot.online is not None,
             "city": self.bot.online.city if self.bot.online is not None else "",
             "phone": bool(self.phone and self.phone.enabled),
@@ -478,6 +480,14 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 if access != "local":
                     return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
                 return self._json(session.phone_settings(body))
+            elif path == "/api/wake":
+                if access != "local":
+                    return self._json({"error": "Change this on the laptop."}, HTTPStatus.FORBIDDEN)
+                if session.wake is None:
+                    return self._json({"error": "The wake word needs the wake extra: pip install -e .[wake]"},
+                                      HTTPStatus.CONFLICT)
+                session.wake.set_enabled(bool(body.get("enabled")))
+                return self._json(session.wake.status())
             elif path == "/api/calendar":
                 if access != "local":
                     return self._json({"error": "Change the calendar on the laptop."}, HTTPStatus.FORBIDDEN)

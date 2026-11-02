@@ -479,6 +479,16 @@ def run_web(cfg: dict, llm, args) -> None:
     closers = start_extras(session.bot, cfg, llm, args)
     if session.bot.skills is not None:
         session.attach_skills(session.bot.skills)
+    try:
+        import openwakeword  # noqa: F401  (only offered when the wake extra is installed)
+        from jarvis.wakeweb import WakeListener
+
+        session.wake = WakeListener(Path(cfg["data_dir"]).expanduser() / "wake.json",
+                                    on_wake=lambda: session.hub.publish({"type": "wake"}),
+                                    threshold=float(cfg["wake_word"].get("threshold", 0.5)))
+        session.wake.start()  # only if it was switched on before
+    except ImportError:
+        pass
     w = cfg["web"]
     from jarvis.phone import Phone
 
