@@ -8,6 +8,8 @@ Market brief, Mon 10:15 New York
 Mood: stressed (moves 1.8x their usual size), stocks -1.2% today on average.
 Relationships: 9 of 28 pairs still move together (32%). Mixed: trust only STRONG signals.
 Signals: 1 strong, 2 risky, 3 avoid; 4 healthy pairs waiting.
+Best now: 1. Crypto good (10/15 pairs healthy, normal, 1 strong signal); 2. Bonds good (4/6 pairs healthy, calm); 3. Gold & metals mixed (2/6 pairs healthy, normal); 4. Currencies poor (1/6 pairs healthy, normal); 5. US stocks poor (5/42 pairs healthy, stressed). Closed now: World stocks.
+World: US stocks -1.2%, gold +0.8%, bitcoin +2.1%. Looks risk-off: stocks down, money moving to safe havens.
 - banks: -2.1%, stressed, 1/6 pairs healthy
 This describes the market now; it is not a forecast.
 Alerts in the last day:
@@ -44,7 +46,13 @@ def test_each_question_goes_to_the_right_tool():
                     ("any opportunities today?", "trading__get_market_watch"),
                     ("how's the trading bot doing", "trading__get_bot_status"),
                     ("how much profit did we make", "trading__get_profit"),
-                    ("show my last trades", "trading__get_recent_trades")):
+                    ("show my last trades", "trading__get_recent_trades"),
+                    ("where should I trade right now", "trading__get_market_brief"),
+                    ("which market is best at the moment", "trading__get_market_brief"),
+                    ("how is bitcoin doing", "trading__get_market_brief"),
+                    ("what about ethereum and gold", "trading__get_market_brief"),
+                    ("how's the euro against the dollar", "trading__get_market_brief"),
+                    ("is crypto favourable today", "trading__get_market_brief")):
         calls.clear()
         assert r.answer(q) is not None, q
         assert calls == [tool], q
@@ -65,4 +73,6 @@ def test_without_the_bot_market_questions_still_go_to_the_model():
 
 def test_spoken_brief_is_short():
     s = spoken("get_market_brief", BRIEF)
-    assert s.startswith("Mood: stressed") and "banks" not in s and len(s) < 500
+    assert s.startswith("Mood: stressed") and "banks" not in s and len(s) < 900
+    assert "Best now: 1. Crypto good" in s and "3. Gold" in s and "4. Currencies" not in s
+    assert "Closed now: World stocks" in s and "risk-off" in s

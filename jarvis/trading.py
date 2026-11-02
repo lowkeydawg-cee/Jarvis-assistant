@@ -7,6 +7,7 @@ answer "I have no live market data" without calling the tool. So these
 questions are routed in code, like the time or the battery:
 
     "how does the market look", "how are stocks doing"     -> get_market_brief
+    "where should I trade now", "how's crypto / gold / the dollar" -> get_market_brief
     "what's strong right now", "any opportunities/signals" -> get_market_watch
     "how much profit", "my p and l"                         -> get_profit
     "how's the trading bot", "bot status"                   -> get_bot_status
@@ -23,24 +24,36 @@ from typing import Callable
 
 # Checked in order: the first pattern that matches the whole request wins.
 INTENTS: list[tuple[str, str, str]] = [
+    ("where", r".*\b(where (should|to|can|do) (i|we) (trade|invest|look)|which market|best market|best place to trade|"
+              r"where.*(favou?rable|best|good) to trade|favou?rable (market|place))\b.*", "get_market_brief"),
     ("profit", r".*\b(profit|profits|pnl|p and l|p n l|how much (did|have) (i|we|it) (made|make|earn|earned|lost|lose))\b.*",
      "get_profit"),
     ("trades", r".*\b(my|last|recent|latest) (paper |demo )?trades\b.*", "get_recent_trades"),
     ("watch", r".*\b(opportunit\w*|signals?|whats strong|what is strong|strong right|anything strong|"
               r"best pairs?|what (pairs|stocks) (should|to)|should i (buy|trade|enter))\b.*", "get_market_watch"),
     ("bot", r".*\b(trading bot|the bot|my bot|pairs bot|bot status|bot doing|bot running)\b.*", "get_bot_status"),
-    ("market", r".*\b(market|markets|stocks?|stock market|wall street|nasdaq|s and p|sp 500|dow)\b.*",
+    ("market", r".*\b(market|markets|stocks?|stock market|wall street|nasdaq|s and p|sp 500|dow|crypto|"
+               r"cryptos|bitcoin|btc|ethereum|ether|eth|solana|gold|silver|oil|bonds?|treasur\w*|dollar|euro|yen|"
+               r"pound|forex|currenc\w*|europe|japan|china|emerging markets?|risk on|risk off)\b.*",
      "get_market_brief"),
 ]
 
-_SPOKEN_BRIEF_LINES = ("Mood:", "Relationships:", "Signals:", "Since last brief:")
+_SPOKEN_BRIEF_LINES = ("Mood:", "Best now:", "World:", "Relationships:", "Signals:", "Since last brief:")
+
+
+def _short_best(line: str) -> str:
+    """'Best now: 1. Crypto good (...); 2. ...; 7. ... Closed now: X.' -> the top three plus what's closed."""
+    body, _, closed = line.partition(" Closed now:")
+    ranked = body.removeprefix("Best now:").strip().rstrip(".").split("; ")
+    return "Best now: " + "; ".join(ranked[:3]) + "." + (f" Closed now:{closed}" if closed else "")
 
 
 def spoken(tool: str, text: str) -> str:
     """A short version for the voice; the full text still shows in the chat."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if tool == "get_market_brief" and any(ln.startswith(_SPOKEN_BRIEF_LINES) for ln in lines):
-        keep = [ln for ln in lines if ln.startswith(_SPOKEN_BRIEF_LINES)]
+        keep = [_short_best(ln) if ln.startswith("Best now:") else ln
+                for ln in lines if ln.startswith(_SPOKEN_BRIEF_LINES)]
         alerts = [ln.lstrip("- ") for ln in lines if ln.startswith("- ") and ":" in ln and "ago" in ln][:2]
         if alerts:
             keep.append("Recent alerts: " + "; ".join(a.split(": ", 1)[-1] for a in alerts))
