@@ -8,6 +8,7 @@ questions are routed in code, like the time or the battery:
 
     "how does the market look", "how are stocks doing"     -> get_market_brief
     "when was the best time to trade this week"            -> get_timing_report
+    "which strategy is working", "should we switch"        -> get_strategy_comparison
     "where should I trade now", "how's crypto / gold / the dollar" -> get_market_brief
     "what's strong right now", "any opportunities/signals" -> get_market_watch
     "how much profit", "my p and l"                         -> get_profit
@@ -25,6 +26,9 @@ from typing import Callable
 
 # Checked in order: the first pattern that matches the whole request wins.
 INTENTS: list[tuple[str, str, str]] = [
+    ("strategy", r".*\b(which (strategy|approach|one) (is|was) (working|better|best|winning)|compare (the )?"
+                 r"(strategies|approaches)|strategy comparison|should (we|i) switch|buy only|long only|"
+                 r"pairs (vs|versus|or) (trend|buy)|which strategy)\b.*", "get_strategy_comparison"),
     ("timing", r".*\b(when (was|were|is|are) (the )?(market|markets|it|crypto|stocks?)? ?(good|best|favou?rable)|"
                r"(best|good|favou?rable) (time|times|hours?|days?) to (trade|enter|buy)|when (could|should|would) "
                r"(i|we) have (entered|traded|bought)|weekly report|week in review|this week'?s? (report|results)|"
