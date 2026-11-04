@@ -16,7 +16,8 @@ Alerts in the last day:
 - 5 minutes ago: MARKET STRESSED: spread moves are 1.8x normal."""
 
 TOOLS = ["trading__get_timing_report", "trading__get_market_brief", "trading__get_market_watch", "trading__get_bot_status",
-         "trading__get_profit", "trading__get_recent_trades", "trading__explain", "web_search"]
+         "trading__get_profit", "trading__get_recent_trades", "trading__explain", "trading__get_trend_results",
+         "web_search"]
 
 
 def router_with(tools=TOOLS, configured=True, error=None):
@@ -56,7 +57,11 @@ def test_each_question_goes_to_the_right_tool():
                     ("when was the best time to trade this week", "trading__get_timing_report"),
                     ("when was the market good", "trading__get_timing_report"),
                     ("when could I have entered", "trading__get_timing_report"),
-                    ("give me the weekly report", "trading__get_timing_report")):
+                    ("give me the weekly report", "trading__get_timing_report"),
+                    ("how is the trend demo doing", "trading__get_trend_results"),
+                    ("which approach is better", "trading__get_trend_results"),
+                    ("how did long only do", "trading__get_trend_results"),
+                    ("what is the trend in bitcoin", "trading__get_market_brief")):
         calls.clear()
         assert r.answer(q) is not None, q
         assert calls == [tool], q

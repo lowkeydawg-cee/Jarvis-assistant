@@ -27,7 +27,8 @@ TRADING_HINT = ("The owner's trading bot is connected. Its tools (names starting
                 "question about the market, trading, pairs, profit or the bot, call the matching trading tool first "
                 "and answer only from what it returns: get_market_brief for how the markets look and where conditions "
                 "are best now, get_timing_report for when markets were good over the past days, get_market_watch for "
-                "opportunities, get_bot_status, get_profit, get_recent_trades, get_demo_results, explain for one pair. "
+                "opportunities, get_bot_status, get_profit, get_recent_trades, get_demo_results, get_trend_results for "
+                "the long-only trend demo against pairs, explain for one pair. "
                 "If the result says NOT LIVE or SIMULATED PRICES, say that first and plainly: never call old or "
                 "simulated data live, and never claim a pattern over days the result doesn't cover. "
                 "Summarise in two or three spoken sentences.")

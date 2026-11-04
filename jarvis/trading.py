@@ -8,6 +8,7 @@ questions are routed in code, like the time or the battery:
 
     "how does the market look", "how are stocks doing"     -> get_market_brief
     "when was the best time to trade this week"            -> get_timing_report
+    "how is the trend demo", "which approach is better"    -> get_trend_results
     "where should I trade now", "how's crypto / gold / the dollar" -> get_market_brief
     "what's strong right now", "any opportunities/signals" -> get_market_watch
     "how much profit", "my p and l"                         -> get_profit
@@ -29,6 +30,8 @@ INTENTS: list[tuple[str, str, str]] = [
                r"(best|good|favou?rable) (time|times|hours?|days?) to (trade|enter|buy)|when (could|should|would) "
                r"(i|we) have (entered|traded|bought)|weekly report|week in review|this week'?s? (report|results)|"
                r"timing report)\b.*", "get_timing_report"),
+    ("trend", r".*\b(trend (demo|results?|trades?|strategy|approach)|long.only|which (approach|strategy)|"
+              r"compare (the )?(approach\w*|strateg\w*))\b.*", "get_trend_results"),
     ("where", r".*\b(where (should|to|can|do) (i|we) (trade|invest|look)|which market|best market|best place to trade|"
               r"where.*(favou?rable|best|good) to trade|favou?rable (market|place))\b.*", "get_market_brief"),
     ("profit", r".*\b(profit|profits|pnl|p and l|p n l|how much (did|have) (i|we|it) (made|make|earn|earned|lost|lose))\b.*",
