@@ -192,7 +192,13 @@ class Assistant:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
         self.speaking_as = speaking_as
         self.history.append({"role": "user", "content": user_text})
-        hit = self.router.answer(user_text) if self.router else None
+        # A multi-step job goes to the agent first: the instant "find" answer would do only its first half.
+        task = False
+        if self.agent is not None and self.tools_enabled and not self.is_guest:
+            from jarvis.agent import wants_agent
+
+            task = wants_agent(user_text)
+        hit = self.router.answer(user_text) if self.router and not task else None
         if hit:
             name, reply = hit
             if self.is_guest and (name in PERSONAL_ROUTES or name.startswith("plugin:")):
@@ -209,16 +215,13 @@ class Assistant:
             self.history.append({"role": "assistant", "content": cached})
             self.speaker.say(cached)
             return cached
-        if self.agent is not None and self.tools_enabled and not self.is_guest:
-            from jarvis.agent import wants_agent
-
-            if wants_agent(user_text):
-                print("  [agent] multi-step task")
-                reply = self.agent.run(user_text)
-                self.last_source = "agent"
-                self.history.append({"role": "assistant", "content": reply})
-                self.speaker.say(reply)
-                return reply
+        if task:
+            print("  [agent] multi-step task")
+            reply = self.agent.run(user_text)
+            self.last_source = "agent"
+            self.history.append({"role": "assistant", "content": reply})
+            self.speaker.say(reply)
+            return reply
         # Only the tools this conversation could need: the last few user messages decide, so a
         # follow-up like "open it" still gets the file tools that the previous question needed.
         recent = " ".join(m["content"] for m in self.history[-6:] if m.get("role") == "user")

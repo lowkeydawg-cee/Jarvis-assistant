@@ -8,6 +8,7 @@ from jarvis import agent as agent_mod
 from jarvis.agent import TaskAgent, parse_plan, wants_agent
 from jarvis.assistant import Assistant
 from jarvis.config import DEFAULTS
+from jarvis.router import Router
 from jarvis.tools import Tool
 
 
@@ -139,3 +140,23 @@ def test_strangers_never_get_agent_mode():
     bot = bot_with([{"content": "Hello."}])
     assert bot.respond("task: read my files and then send them", speaking_as={"owner": False, "score": 0.1}) is not None
     assert bot.llm.seen[0][1] is None and len(bot.llm.seen) == 1
+
+
+def test_a_multi_step_job_beats_the_instant_answers():
+    bot = bot_with([{"content": '["Find it"]'}, {"content": "DONE: found it"}, {"content": "All done."}])
+    bot.router = Router(routes=False)
+    bot.router.add("laptop", r"find (?P<q>.+)", lambda m: "the wrong file")
+    assert bot.respond("find my CV and summarise it in two lines") != "the wrong file"
+    assert bot.last_source == "agent"
+
+
+def test_a_reminder_stays_a_reminder():
+    assert not wants_agent("remind me to check the oven and call mum at 5")
+
+
+def test_later_steps_see_a_long_result_whole():
+    long = "x" * 1500
+    bot = bot_with([{"content": '["Read it", "Summarise it"]'}, {"content": f"DONE: {long}"},
+                    {"content": "DONE: short"}, {"content": "Here it is."}])
+    bot.agent.run("read the report and then summarise it for me")
+    assert long in bot.llm.seen[2][0][0]["content"]
