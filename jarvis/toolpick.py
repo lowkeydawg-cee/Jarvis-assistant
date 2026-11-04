@@ -57,6 +57,12 @@ TOOL_GROUP: dict[str, str] = {
 _COMPILED = {g: re.compile(p, re.I) for g, p in GROUPS.items()}
 
 
+def add_tool_group(tool: str, group: str, pattern: str) -> None:
+    """Plugins register their own trigger words."""
+    TOOL_GROUP[tool] = group
+    _COMPILED[group] = re.compile(pattern, re.I)
+
+
 def group_of(name: str) -> str | None:
     if name in TOOL_GROUP:
         return TOOL_GROUP[name]

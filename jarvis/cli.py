@@ -215,6 +215,11 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         index.start_background(float(lap.get("rescan_hours") or 6))
         print(f"  [laptop] indexing {', '.join(index.roots)} in the background")
 
+    if cfg["plugins"]["enabled"]:
+        from jarvis.plugins import load_plugins
+
+        bot.plugins = load_plugins(cfg["plugins"].get("folder") or data / "plugins", bot)
+
     servers = cfg["mcp"].get("servers") or {}
     if servers:
         from jarvis.mcp_client import MCPHub

@@ -77,6 +77,7 @@ class Assistant:
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
         self.metrics = None  # jarvis.metrics.Metrics: timing of every turn
+        self.plugins: list[dict] = []  # what load_plugins found
         self._first_word_at = 0.0
         self._prompt_chars = 0
         self.on_sources: Callable[[list[dict]], None] | None = None  # files behind an answer (the page links them)
@@ -189,7 +190,7 @@ class Assistant:
         hit = self.router.answer(user_text) if self.router else None
         if hit:
             name, reply = hit
-            if self.is_guest and name in PERSONAL_ROUTES:
+            if self.is_guest and (name in PERSONAL_ROUTES or name.startswith("plugin:")):
                 reply = "Sorry, I only share that with the person I know. I didn't recognise your voice."
             print(f"  [instant] {name}")
             self.last_source = "instant"

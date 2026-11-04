@@ -287,6 +287,7 @@ class WebSession:
             "voice": {"available": self.voice is not None,
                       "enrolled": bool(self.voice and self.voice.enrolled)},
             "reminders": self.skills is not None,
+            "plugins": self.bot.plugins,
             "wake": self.wake.status() if self.wake is not None else {"available": False},
             "online": self.bot.online is not None,
             "city": self.bot.online.city if self.bot.online is not None else "",

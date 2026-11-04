@@ -51,6 +51,10 @@ DEFAULTS: dict[str, Any] = {
         "drafts_folder": "[Gmail]/Drafts",
     },
     # Memory of past conversations: a local journal plus a short summary of each day.
+    "plugins": {
+        "enabled": True,
+        "folder": "",                  # blank: a plugins folder inside data_dir. See docs/PLUGINS.md
+    },
     "dev": {
         "enabled": True,               # developer copilot: git history, diffs, and tests (asks first)
     },

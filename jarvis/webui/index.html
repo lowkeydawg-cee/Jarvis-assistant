@@ -617,6 +617,10 @@
         <div class="phone-steps" id="tgSteps"></div>
       </div>
     </div>
+    <div class="field" id="pluginField" hidden>
+      <span class="label">Plugins</span>
+      <ul class="perf-list" id="pluginList"></ul>
+    </div>
     <div class="field" id="calField" hidden>
       <span class="label">Your calendar</span>
       <div class="enroll">
@@ -1247,7 +1251,21 @@
   $("voice").onchange = (e) => { chooseVoice(e.target.value); store.set("voiceChosen", true); $("voicePick").hidden = true; };
   $("rate").oninput = (e) => { prefs.rate = Number(e.target.value); store.set("rate", prefs.rate); showRate(); };
   $("handsfree").onchange = (e) => { prefs.handsfree = e.target.checked; store.set("handsfree", prefs.handsfree); };
+  function showPlugins() {
+    const list = status.plugins || [];
+    $("pluginField").hidden = !list.length;
+    const ul = $("pluginList"); ul.innerHTML = "";
+    for (const p of list) {
+      const li = document.createElement("li");
+      const name = document.createElement("span"); name.textContent = p.name;
+      const v = document.createElement("span"); v.className = "v";
+      v.textContent = p.ok ? `${p.tools.length} tools, ${p.routes} shortcuts` : p.error;
+      if (!p.ok) v.style.color = "var(--danger)";
+      li.append(name, v); ul.appendChild(li);
+    }
+  }
   function showWake() {
+    showPlugins();
     const w = status.wake || {};
     $("wakeRow").hidden = !w.available || status.remote;
     $("wakeOn").checked = !!w.enabled;
