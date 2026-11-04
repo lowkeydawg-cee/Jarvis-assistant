@@ -58,6 +58,9 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
 
     bot.memory = Memory(data / "memory.json")
     bot.owner_name = bot.owner_name or cfg["user"].get("name", "")
+    from jarvis.metrics import Metrics
+
+    bot.metrics = Metrics(data / "metrics.jsonl")
     if cfg["journal"]["enabled"]:
         from jarvis.journal import Journal, add_journal_routes, journal_tool
 

@@ -12,6 +12,7 @@ import json
 import queue
 import re
 import threading
+import time
 from typing import Callable
 
 from jarvis.persona import system_prompt
@@ -75,6 +76,9 @@ class Assistant:
         self.mailbox = None  # jarvis.mail.Mailbox: Gmail, read and draft only
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
+        self.metrics = None  # jarvis.metrics.Metrics: timing of every turn
+        self._first_word_at = 0.0
+        self._prompt_chars = 0
         self.on_sources: Callable[[list[dict]], None] | None = None  # files behind an answer (the page links them)
         # Multi-step goals. Each Assistant gets its own, so tasks use its speaker and confirmations.
         from jarvis.agent import TaskAgent
@@ -87,7 +91,7 @@ class Assistant:
         other.toolbox.tools = self.toolbox.tools
         other.router, other.memory, other.skills, other.online = self.router, self.memory, self.skills, self.online
         other.owner_name, other.notifier = self.owner_name, self.notifier
-        other.laptop, other.journal = self.laptop, self.journal
+        other.laptop, other.journal, other.metrics = self.laptop, self.journal, self.metrics
         return other
 
     # ---- inbox -----------------------------------------------------------
@@ -161,7 +165,16 @@ class Assistant:
 
     def respond(self, user_text: str, speaking_as: dict | None = None) -> str:
         """Run one turn, then note it in the conversation journal (owner's turns only)."""
+        started = time.monotonic()
+        self._first_word_at = 0.0
+        self._prompt_chars = 0
+        calls_before = self.toolbox.call_count
         reply = self._respond(user_text, speaking_as)
+        if self.metrics is not None:
+            done = time.monotonic()
+            self.metrics.record(self.last_source, ((self._first_word_at or done) - started) * 1000, (done - started) * 1000,
+                                tools=self.toolbox.call_count - calls_before, tokens=self._prompt_chars // 4,
+                                model=getattr(self.llm, "last_model", ""), channel=self.channel)
         if self.journal is not None and not self.is_guest and not user_text.startswith(self.AUTOMATED):
             try:
                 self.journal.add(user_text, reply, self.last_source, self.channel)
@@ -204,6 +217,7 @@ class Assistant:
             # Models occasionally repeat their answer word for word; never read a sentence out twice.
             if sentence.strip() in (s.strip() for s in spoken):
                 return
+            self._first_word_at = self._first_word_at or time.monotonic()
             spoken.append(sentence)
             self.speaker.feed(sentence)
 
@@ -214,7 +228,9 @@ class Assistant:
                 for sentence in stream.feed(delta):
                     say_once(sentence)
 
-            msg = self.llm.chat_stream(self._messages(), tools=tools, on_text=on_text)
+            messages = self._messages()
+            self._prompt_chars += sum(len(str(m.get("content") or "")) for m in messages) + len(json.dumps(tools or []))
+            msg = self.llm.chat_stream(messages, tools=tools, on_text=on_text)
             self.last_source = getattr(self.llm, "last_provider", "") or "local"
             for sentence in stream.flush():
                 say_once(sentence)

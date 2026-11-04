@@ -416,6 +416,11 @@
   /* conversation */
   .you { border-radius: 20px 20px 6px 20px; padding: 10px 16px; background: var(--glass-strong); }
   .jarvis { padding-left: 16px; border-left: 2px solid var(--accent); }
+  .perf-chart { display: flex; align-items: flex-end; gap: 2px; height: 56px; margin-bottom: 10px; }
+  .perf-chart i { flex: 1; min-width: 2px; border-radius: 2px 2px 0 0; opacity: .9; }
+  .perf-list { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+  .perf-list li { display: flex; justify-content: space-between; gap: 8px; }
+  .perf-list .v { font: 12px var(--mono); color: var(--muted); }
   .sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .source { font: 12px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
   .source:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
@@ -560,6 +565,12 @@
     <div class="vital"><span>Disk</span><span class="v" id="vDisk">–</span><div class="bar"><i id="bDisk"></i></div></div>
     <div class="vital" id="knowRow" hidden title="Jarvis keeps a private index of the files on this laptop so it can find anything"><span>Knows</span><span class="v" id="vKnow">–</span></div>
     <div class="vital" id="batRow" hidden><span>Battery</span><span class="v" id="vBat">–</span><div class="bar"><i id="bBat"></i></div></div>
+  </section>
+  <section class="card" id="perfBox" hidden aria-label="Performance">
+    <h2>Performance</h2>
+    <div id="perfChart" class="perf-chart" role="img" aria-label="Time to first word for recent answers"></div>
+    <ul id="perfList" class="perf-list"></ul>
+    <p class="note" id="perfNote"></p>
   </section>
   <section class="card" aria-label="Health">
     <h2>Health <button id="recheck" type="button">Check again</button></h2>
@@ -926,7 +937,7 @@
     if (matchMedia("(pointer: coarse)").matches) $("howTo").textContent = "Tap the microphone and talk, or type below. A few things to try:";
     if (s.remote) document.querySelector('[aria-label="This computer"] h2').textContent = "Your laptop";
     if (s.reminders) loadReminders();
-    loadToday();
+    loadToday(); loadPerf();
     const local = s.private || !s.cloud;
     $("mode").dataset.kind = local ? "local" : "cloud";
     $("modeText").textContent = s.private && s.cloud ? "Private · this laptop" : local ? "Thinking on this laptop" : "Cloud brain";
@@ -962,6 +973,7 @@
         if (!thinking) {
           hideTyping(); current = null; sentAt = 0;
           if (status.online) loadToday();  // "I live in Kigali" or a new reminder shows up straight away
+          loadPerf();
           if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
         }
         render();
@@ -1404,6 +1416,34 @@
     const el = $(id); el.style.width = Math.max(2, Math.min(100, pct)) + "%";
     el.className = pct >= warnAt ? (goodLow ? "ok" : "hot") : "";
   }
+  // ---------- performance: how long answers really take ----------
+  const PERF = { instant: ["Instant", "#7fae6e"], cached: ["Remembered", "#7fae6e"], cloud: ["Cloud", "var(--accent)"],
+                 local: ["This laptop", "#a58bd6"], agent: ["Tasks", "#6fb3c8"], other: ["Other", "var(--faint)"] };
+  const secs = (ms) => ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+  async function loadPerf() {
+    let m; try { m = await (await fetch("/api/metrics")).json(); } catch { return; }
+    $("perfBox").hidden = !m.turns;
+    if (!m.turns) return;
+    const peak = Math.max(...m.recent.map((r) => r.first_ms), 1);
+    const chart = $("perfChart"); chart.innerHTML = "";
+    for (const r of m.recent) {
+      const bar = document.createElement("i");
+      // Square-root scale, so a 40-second outlier doesn't flatten the 1-second answers.
+      bar.style.height = Math.max(3, Math.sqrt(r.first_ms / peak) * 100) + "%";
+      bar.style.background = (PERF[r.source] || PERF.other)[1];
+      bar.title = `${(PERF[r.source] || PERF.other)[0]}: ${secs(r.first_ms)}`;
+      chart.appendChild(bar);
+    }
+    const list = $("perfList"); list.innerHTML = "";
+    for (const [src, s] of Object.entries(m.by_source)) {
+      const li = document.createElement("li");
+      const name = document.createElement("span"); name.textContent = `${(PERF[src] || PERF.other)[0]} (${s.count})`;
+      const val = document.createElement("span"); val.className = "v"; val.textContent = `${secs(s.p50_ms)} · slowest ${secs(s.p95_ms)}`;
+      li.append(name, val); list.appendChild(li);
+    }
+    $("perfNote").textContent = `${m.turns} answers measured. Time to first word.` + (m.avg_tokens ? ` About ${m.avg_tokens.toLocaleString()} tokens per AI question.` : "");
+  }
+
   async function loadVitals() {
     if (!railVisible() || document.hidden) return;
     let v; try { v = await (await fetch("/api/system")).json(); } catch { return; }

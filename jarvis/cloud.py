@@ -173,6 +173,7 @@ class HybridLLM:
         self.private = private
         self.log = log
         self.last_provider = ""
+        self.last_model = ""
 
     @property
     def model(self) -> str:
@@ -212,6 +213,7 @@ class HybridLLM:
                 try:
                     msg = client.chat_stream(messages, tools, relay)
                     self.last_provider = "cloud"
+                    self.last_model = client.model
                     return msg
                 except CloudError as exc:
                     if started:
@@ -226,6 +228,7 @@ class HybridLLM:
             tools = None
         msg = self.local.chat_stream(messages, tools, on_text)
         self.last_provider = "local"
+        self.last_model = self.local.model
         return msg
 
     def warm(self) -> None:

@@ -140,6 +140,7 @@ class ToolBox:
         self.confirm = confirm
         self.announce = announce
         self.tools: dict[str, Tool] = {}
+        self.call_count = 0  # for the performance dashboard
         self.register(Tool(
             name="run_command",
             description=(
@@ -180,6 +181,7 @@ class ToolBox:
         tool = self.tools.get(name)
         if tool is None:
             return f"Unknown tool: {name}"
+        self.call_count += 1
         if tool.announce:
             line = tool.announce(arguments)
             if line:

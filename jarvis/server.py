@@ -450,6 +450,9 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 return self._json({"reminders": session.reminders()})
             if path == "/api/today":
                 return self._json(session.today())
+            if path == "/api/metrics":
+                m = session.bot.metrics
+                return self._json(m.summary() if m else {"turns": 0})
             if path == "/api/system":
                 from jarvis.vitals import vitals
 
