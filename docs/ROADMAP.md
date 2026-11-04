@@ -56,3 +56,4 @@ vague errors.
 - Browser app: one active tab, voice picker, mic meter, "Up next" panel, sentences no longer split at pauses.
 - Agent mode, developer copilot, performance dashboard and single-file plugins.
 - Per-question brain routing and a local answer cache.
+- Laptop control, with confirmation for anything that could lose work.

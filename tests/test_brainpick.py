@@ -143,3 +143,79 @@ def test_answers_that_used_tools_are_not_cached(tmp_path):
     bot.toolbox.register(Tool("t", "t", lambda a: "x"))
     bot.respond("capital city of Peru")
     assert bot.answers.items == {}
+
+
+class Busy(Brain):
+    """Rate limited the first `times` calls."""
+
+    def __init__(self, model, error, times=99):
+        super().__init__(model)
+        self.error, self.times = error, times
+
+    def chat_stream(self, messages, tools=None, on_text=None):
+        self.calls += 1
+        if self.calls <= self.times:
+            raise CloudError(self.error)
+        return {"role": "assistant", "content": self.model}
+
+
+LIMIT = "Cloud model returned 429: Rate limit reached. Please try again in 7.5s."
+
+
+def test_a_short_rate_limit_is_waited_out_instead_of_using_the_slow_local_model():
+    naps, local = [], Brain("local")
+    llm = HybridLLM(local, Busy("big", LIMIT, times=1), log=lambda m: None)
+    llm.sleep = naps.append
+    assert llm.chat_stream(user("explain how vaccines work"))["content"] == "big"
+    assert naps == [7.7] and local.calls == 0
+
+
+@pytest.mark.parametrize("error", ["Cloud model returned 429: Please try again in 2m10s.", "Cloud model returned 413: too large"])
+def test_long_waits_and_other_errors_go_straight_to_local(error):
+    naps, local = [], Brain("local")
+    llm = HybridLLM(local, Busy("big", error), log=lambda m: None)
+    llm.sleep = naps.append
+    assert llm.chat_stream(user("explain how vaccines work"))["content"] == "local"
+    assert naps == []
+
+
+def test_the_local_fallback_reads_a_short_version():
+    seen = []
+
+    class Local(Brain):
+        def chat_stream(self, messages, tools=None, on_text=None):
+            seen.extend(messages)
+            return {"role": "assistant", "content": "ok"}
+
+    llm = HybridLLM(Local("local"), Busy("big", "Cloud model returned 413: too large"), log=lambda m: None)
+    long = [{"role": "user", "content": "x" * 9000} for _ in range(20)]
+    llm.chat_stream([{"role": "system", "content": "persona"}, *long])
+    assert len(seen) == 7 and max(len(m["content"]) for m in seen[1:]) == 1500
+
+
+def test_a_huge_conversation_is_cut_to_fit_the_cloud_limit():
+    bot = Assistant(Once(), Quiet(), lambda: "", DEFAULTS)
+    for i in range(8):
+        bot.history += [{"role": "user", "content": f"question {i}"},
+                        {"role": "assistant", "content": "", "tool_calls": [{"id": "1"}]},
+                        {"role": "tool", "content": "y" * 6000},
+                        {"role": "assistant", "content": "z" * 5000}]
+    bot.history.append({"role": "user", "content": "latest"})
+    sent = bot._messages()
+    assert sum(len(str(m.get("content") or "")) for m in sent) < 26000
+    assert sent[-1]["content"] == "latest"
+    assert sum(len(m["content"]) for m in sent if m["role"] == "tool") <= 303 * 8  # old file reads shrink
+
+
+@pytest.mark.parametrize("text", ["how much profit did the trading bot make", "explain how the pairs bot decides when to trade",
+                                  "where does the bot log its daily autopsy", "what changed in the catalog project"])
+def test_questions_about_the_users_own_things_are_never_cached(text):
+    assert not cacheable(text)
+
+
+def test_a_cant_help_answer_is_never_saved_or_served(tmp_path):
+    c = AnswerCache(tmp_path / "a.json")
+    c.put("capital city of Peru", "I don't have access to that.")
+    assert c.items == {}
+    c.items["capital city peru"] = {"reply": "Sorry, I can't say.", "at": c.clock()}  # saved by an older version
+    assert c.get("capital city of Peru") is None

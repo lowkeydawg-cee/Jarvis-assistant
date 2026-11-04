@@ -31,6 +31,9 @@ CONTEXTUAL = re.compile(r"\b(it|its|that|this|these|those|they|them|he|she|him|h
 TIMELY = re.compile(r"\b(now|today|tonight|tomorrow|yesterday|week|month|year|latest|current|currently|recent|recently|"
                     r"news|weather|price|prices|stock|stocks|bitcoin|crypto|score|scores|time|date|live|update|updates|"
                     r"president|prime minister|ceo)\b", re.I)
+COMMAND = re.compile(r"^\s*(open|close|launch|start|stop|turn|set|mute|unmute|lock|play|pause|resume|skip|shut|restart|"
+                     r"take|search|go to|cancel|find|run|send|add|remove|delete)\b", re.I)
+NO_ANSWER = re.compile(r"\b(don.?t have|do not have|can.?t|cannot|couldn.?t|unable|not sure|no access|sorry)\b", re.I)
 STOP = {"the", "a", "an", "of", "is", "are", "was", "were", "what", "whats", "who", "whos", "please", "tell", "about", "in", "on"}
 
 
@@ -58,8 +61,12 @@ def cache_key(text: str) -> str:
 
 
 def cacheable(text: str) -> bool:
+    from jarvis.toolpick import wanted
+
     words = text.split()
-    return 3 <= len(words) <= 25 and not (PERSONAL.search(text) or CONTEXTUAL.search(text) or TIMELY.search(text))
+    return (3 <= len(words) <= 25 and not (PERSONAL.search(text) or CONTEXTUAL.search(text) or TIMELY.search(text)
+                                           or COMMAND.search(text))
+            and not wanted(text))  # a question tools could answer ("the trading bot") isn't general knowledge
 
 
 class AnswerCache:
@@ -79,12 +86,12 @@ class AnswerCache:
             return None
         with self.lock:
             hit = self.items.get(cache_key(text))
-        if hit and self.clock() - hit["at"] < self.ttl:
+        if hit and self.clock() - hit["at"] < self.ttl and not NO_ANSWER.search(hit["reply"]):
             return hit["reply"]
         return None
 
     def put(self, text: str, reply: str) -> None:
-        if not cacheable(text) or not reply.strip() or len(reply) > 1500:
+        if not cacheable(text) or not reply.strip() or len(reply) > 1500 or NO_ANSWER.search(reply):
             return
         with self.lock:
             self.items[cache_key(text)] = {"reply": reply, "at": self.clock()}

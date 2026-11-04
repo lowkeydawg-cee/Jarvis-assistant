@@ -14,11 +14,38 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import time
 from typing import Any, Callable
 
 import requests
 
 from jarvis.llm import OllamaClient, OllamaError
+
+
+MAX_RATE_WAIT = 15  # seconds worth waiting for the cloud, when the local model would take minutes
+LOCAL_KEEP = 6  # messages the local model sees: on a laptop CPU, every extra one costs seconds
+LOCAL_MESSAGE_CHARS = 1500
+
+
+def rate_wait(error: str) -> float | None:
+    """Seconds until a rate limit clears, or None if this error wasn't a rate limit."""
+    if "429" not in error:
+        return None
+    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", error)
+    if not m:
+        return 5.0
+    seconds = float(m.group(2)) / (1000 if m.group(3) == "ms" else 1)
+    return seconds + 60 * int(m.group(1) or 0)
+
+
+def for_local(messages: list[dict]) -> list[dict]:
+    """A short version of the conversation, since a small model on a CPU reads slowly."""
+    system = [m for m in messages if m.get("role") == "system"]
+    recent = [m for m in messages if m.get("role") != "system"][-LOCAL_KEEP:]
+    while recent and recent[0].get("role") == "tool":
+        recent = recent[1:]
+    return system + [{**m, "content": str(m.get("content") or "")[:LOCAL_MESSAGE_CHARS]} for m in recent]
 
 
 class CloudError(RuntimeError):
@@ -174,6 +201,7 @@ class HybridLLM:
         self.fast = fast  # a small quick cloud model for easy questions
         self.local_hard = local_hard  # a bigger local model for hard questions, on stronger PCs
         self.last_difficulty = ""
+        self.sleep = time.sleep
         self.private = private
         self.log = log
         self.last_provider = ""
@@ -219,16 +247,25 @@ class HybridLLM:
             order = [self.cloud, *self.backups]
             if self.fast and self.last_difficulty == "easy":
                 order = [self.fast, *[c for c in order if c.model != self.fast.model]]
-            for client in order:
-                try:
-                    msg = client.chat_stream(messages, tools, relay)
-                    self.last_provider = "cloud"
-                    self.last_model = client.model
-                    return msg
-                except CloudError as exc:
-                    if started:
-                        raise  # half a reply was already spoken; don't start over in another voice
-                    self.log(f"  [hybrid] {client.model} failed ({str(exc)[:80]}), trying the next brain")
+            for attempt in (1, 2):
+                waits = []
+                for client in order:
+                    try:
+                        msg = client.chat_stream(messages, tools, relay)
+                        self.last_provider = "cloud"
+                        self.last_model = client.model
+                        return msg
+                    except CloudError as exc:
+                        if started:
+                            raise  # half a reply was already spoken; don't start over in another voice
+                        self.log(f"  [hybrid] {client.model} failed ({str(exc)[:80]}), trying the next brain")
+                        waits.append(rate_wait(str(exc)))
+                # All busy for a few seconds is still far quicker than the local model. Anything else won't clear up.
+                soonest = min((w for w in waits if w is not None), default=None)
+                if attempt == 2 or soonest is None or soonest > MAX_RATE_WAIT:
+                    break
+                self.log(f"  [hybrid] every cloud model is busy, waiting {soonest:.0f}s")
+                self.sleep(soonest + 0.2)
         if not self.local_tools:
             # Without tools, the full persona (all about tools) only slows a small model and confuses it.
             from jarvis.persona import lite_system_prompt
@@ -236,6 +273,8 @@ class HybridLLM:
             if messages and messages[0].get("role") == "system":
                 messages = [{"role": "system", "content": lite_system_prompt()}, *messages[1:]]
             tools = None
+        if self.cloud:  # with no cloud at all, the local model is the brain and gets everything
+            messages = for_local(messages)
         local = self.local_hard if self.local_hard and self.last_difficulty == "hard" else self.local
         msg = local.chat_stream(messages, tools, on_text)
         self.last_provider = "local"

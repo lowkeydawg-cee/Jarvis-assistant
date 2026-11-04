@@ -218,7 +218,7 @@ def add_online_routes(router, online: Online) -> None:
         if not q or KNOWLEDGE_SKIP.search(q):
             return None  # personal or vague: let the model handle it
         words = [w for w in re.findall(r"[a-z0-9]+", q.lower()) if len(w) > 2 and w not in ("the", "and", "for", "from", "with")]
-        if not words or len(words) > 4 or re.search(r"\b(and|or|but|if|because|anything|something)\b", q):
+        if not words or len(words) > 2 or re.search(r"\b(and|or|but|if|because|anything|something)\b", q):
             return None  # not one thing to look up: Wikipedia once answered this with BBC Shakespeare
         try:
             hit = online.lookup(q)

@@ -172,7 +172,7 @@ class ToolBox:
     def specs(self, context: str | None = None) -> list[dict]:
         """All tool specs, or with `context` only those the conversation could need (see toolpick)."""
         if context is None:
-            return [tool.spec() for tool in self.tools.values()]
+            return [tool.spec() for tool in list(self.tools.values())]
         from jarvis.toolpick import pick
 
         return [self.tools[n].spec() for n in pick(list(self.tools), context)]

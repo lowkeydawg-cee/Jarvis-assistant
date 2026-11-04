@@ -47,6 +47,7 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Performance dashboard | Every turn is timed: time to first word, total, tools, tokens and model, charted in the command center. | JSON lines, `/api/metrics` |
 | Plugins | Drop one Python file into the plugins folder to add a tool, an instant answer or a timed job. See [docs/PLUGINS.md](docs/PLUGINS.md). | Plain Python |
 | Smart routing and answer cache | Easy questions go to a small fast cloud model and hard ones to the big one, which also spreads the free-tier limits. Repeated general questions are answered from a local file in about a millisecond, never anything personal or time-sensitive. | `brainpick.py`, JSON store |
+| Laptop control | Opens any installed app or website, and controls sound, brightness, media and the lock screen, instantly and with no model. Closing apps, sleep, restart and shut down always ask first, and strangers' voices can't use any of it. It can't type, click, change Windows settings or delete anything. | Windows Start menu list, media keys, WMI |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
 
@@ -133,6 +134,7 @@ jarvis/
   metrics.py      timing of every turn
   plugins.py      loads single-file plugins
   brainpick.py    picks a brain per question; the answer cache
+  control.py      laptop control: apps, sound, brightness, media, lock, power
   vision.py       screenshots, the vision model call, the global hotkey
   watchers.py     battery, disk, meeting and log watchers, briefing, scheduler
   audio.py        shared microphone stream and end-of-speech detection
@@ -231,6 +233,7 @@ Say "goodbye" to exit.
 - "Look at my screen. Why is this failing?" uses vision. Or just press Ctrl+Alt+J.
 - "Brief me." reads today's meetings, repo status and disk.
 - "Find my CV and summarise it." runs as an agent task with a live checklist.
+- "Open Spotify.", "Set the volume to 40.", "Pause the music.", "Lock my laptop." happen instantly.
 - "What are the uncommitted changes in clean-project?" uses the developer copilot.
 
 ## The safety model
