@@ -15,7 +15,7 @@ This describes the market now; it is not a forecast.
 Alerts in the last day:
 - 5 minutes ago: MARKET STRESSED: spread moves are 1.8x normal."""
 
-TOOLS = ["trading__get_timing_report", "trading__get_market_brief", "trading__get_market_watch", "trading__get_bot_status",
+TOOLS = ["trading__get_strategy_comparison", "trading__get_timing_report", "trading__get_market_brief", "trading__get_market_watch", "trading__get_bot_status",
          "trading__get_profit", "trading__get_recent_trades", "trading__explain", "web_search"]
 
 
@@ -56,7 +56,10 @@ def test_each_question_goes_to_the_right_tool():
                     ("when was the best time to trade this week", "trading__get_timing_report"),
                     ("when was the market good", "trading__get_timing_report"),
                     ("when could I have entered", "trading__get_timing_report"),
-                    ("give me the weekly report", "trading__get_timing_report")):
+                    ("give me the weekly report", "trading__get_timing_report"),
+                    ("which strategy is working", "trading__get_strategy_comparison"),
+                    ("should we switch to buy only", "trading__get_strategy_comparison"),
+                    ("compare the strategies", "trading__get_strategy_comparison")):
         calls.clear()
         assert r.answer(q) is not None, q
         assert calls == [tool], q
