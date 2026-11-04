@@ -41,6 +41,12 @@ For a plain-language walkthrough of how all of this fits together, read [docs/HO
 | Phone alerts | Reminders, battery and build warnings, the morning briefing, and answers you walked away from arrive on your lock screen. Tap one to open Jarvis. | ntfy (free, no account) |
 | Telegram | Your own private bot: chat or send voice notes to Jarvis from anywhere, and get the same alerts there. Only your account can use it; the laptop only makes outgoing connections. | Telegram Bot API, Groq Whisper |
 | Knows your voice | Read three sentences once; Jarvis then greets you by name and keeps your notes, schedule and memories from voices it doesn't recognise. Only a voiceprint is stored. | WeSpeaker ResNet34 via sherpa-onnx, offline |
+| Agent mode | "Find my CV and summarise it" becomes a plan that Jarvis works through step by step, checking each result, with a live checklist in the browser app. Capped at 6 steps and 4 minutes, and risky actions still ask first. | Plan, act, check loop over the normal tools |
+| Hybrid notes search | Finds notes by exact words and by meaning, merges both rankings, and shows the sources as chips you can click to open. | SQLite FTS5, embeddings, reciprocal rank fusion |
+| Developer copilot | Knows your git projects: what changed, what's uncommitted, diffs with secret files left out, and test runs that ask first. Git access is read-only. | git, pytest and npm test detection |
+| Performance dashboard | Every turn is timed: time to first word, total, tools, tokens and model, charted in the command center. | JSON lines, `/api/metrics` |
+| Plugins | Drop one Python file into the plugins folder to add a tool, an instant answer or a timed job. See [docs/PLUGINS.md](docs/PLUGINS.md). | Plain Python |
+| Smart routing and answer cache | Easy questions go to a small fast cloud model and hard ones to the big one, which also spreads the free-tier limits. Repeated general questions are answered from a local file in about a millisecond, never anything personal or time-sensitive. | `brainpick.py`, JSON store |
 
 Everything is optional and switched on in `config.yaml`, so the basic assistant still runs on a modest laptop.
 
@@ -121,7 +127,12 @@ jarvis/
   voice.py        Speaker (pipelined synth and playback), Silero VAD, barge-in
   tools.py        tool registry and the shell-command safety policy
   mcp_client.py   connects MCP servers and registers their tools
-  knowledge.py    second brain: chunking, embedding, vector search
+  knowledge.py    second brain: chunking, embedding, hybrid keyword and vector search
+  agent.py        agent mode: plan, act and check multi-step tasks
+  devtools.py     developer copilot: repos, status, diffs, tests
+  metrics.py      timing of every turn
+  plugins.py      loads single-file plugins
+  brainpick.py    picks a brain per question; the answer cache
   vision.py       screenshots, the vision model call, the global hotkey
   watchers.py     battery, disk, meeting and log watchers, briefing, scheduler
   audio.py        shared microphone stream and end-of-speech detection
@@ -129,7 +140,7 @@ jarvis/
 scripts/
   download_voice.py     fetches a Piper voice
   install_startup.ps1   start Jarvis when you sign in to Windows
-tests/                  40 tests, no models, mic or API key needed
+tests/                  no models, mic or API key needed
 ```
 
 ## Setup
@@ -219,6 +230,8 @@ Say "goodbye" to exit.
 - "What did I change in the jarvis repo today?" uses the git MCP server.
 - "Look at my screen. Why is this failing?" uses vision. Or just press Ctrl+Alt+J.
 - "Brief me." reads today's meetings, repo status and disk.
+- "Find my CV and summarise it." runs as an agent task with a live checklist.
+- "What are the uncommitted changes in clean-project?" uses the developer copilot.
 
 ## The safety model
 

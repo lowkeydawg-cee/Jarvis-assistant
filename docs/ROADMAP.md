@@ -21,7 +21,7 @@ vague errors.
 
 | # | Idea | Why it matters | Effort |
 |---|---|---|---|
-| 6 | **Latency log for every turn** (time to first word is now shown under each reply): speech-to-text ms, time to the model's first word, voice ms | Without it, nobody can tell which stage is slow. It turns "it's slow" into a number. | S |
+| 6 | ~~**Latency log for every turn**~~ Done: the performance dashboard times every turn. Next: split out speech-to-text and voice time. | Without it, nobody can tell which stage is slow. It turns "it's slow" into a number. | S |
 | 7 | **Smarter instant answers**: match by meaning (embeddings) so paraphrases work, plus **your own commands in config.yaml** ("open my project", "start the build") | The router only knows exact phrasings today. Custom commands make Jarvis useful without a model at all. | M |
 | 8 | ~~**Long-term memory**~~ Done: "remember that..." persists and reaches the model. Next: keep a summary of past conversations too. | History is lost every time Jarvis closes. | M |
 | 9 | **Treat tool output as untrusted** (notes, files, web pages, MCP results), so text inside a file can't steer Jarvis into running commands | The confirmation step already protects actions, but this closes prompt injection properly before more tools arrive. | M |
@@ -31,7 +31,7 @@ vague errors.
 
 | # | Idea | Why it matters | Effort |
 |---|---|---|---|
-| 11 | **Better second-brain search**: keyword plus meaning, then reranking, reading only clean text (no badges or code) | Answers are only as good as the note it finds. | M |
+| 11 | ~~**Better second-brain search**~~ Done: keyword plus meaning with clickable sources. Next: reranking, and reading only clean text (no badges or code). | Answers are only as good as the note it finds. | M |
 | 12 | **Echo cancellation**, so you can interrupt Jarvis on laptop speakers, not only with headphones | Today barge-in needs headphones. | L |
 | 13 | **Reliable "Hey Jarvis"**: tune the wake word on your own voice, and show its confidence in `--mic-test` | The wake word is off by default because it was never tuned. | M |
 | 14 | **Real calendar**: Google or Outlook through an MCP server, including recurring events | Briefings miss meetings unless you export an .ics file by hand. | M |
@@ -54,3 +54,5 @@ vague errors.
 - Recognises the owner's voice, and keeps personal answers from other voices.
 - Live knowledge without keys: weather, Wikipedia facts, headlines; a Today panel in the browser app.
 - Browser app: one active tab, voice picker, mic meter, "Up next" panel, sentences no longer split at pauses.
+- Agent mode, developer copilot, performance dashboard and single-file plugins.
+- Per-question brain routing and a local answer cache.
