@@ -75,6 +75,7 @@ class Assistant:
         self.mailbox = None  # jarvis.mail.Mailbox: Gmail, read and draft only
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
+        self.on_sources: Callable[[list[dict]], None] | None = None  # files behind an answer (the page links them)
         # Multi-step goals. Each Assistant gets its own, so tasks use its speaker and confirmations.
         from jarvis.agent import TaskAgent
 

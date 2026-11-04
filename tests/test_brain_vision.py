@@ -1,3 +1,4 @@
+import os
 import base64
 import hashlib
 
@@ -68,3 +69,60 @@ def test_screen_vision_sends_a_downscaled_png_to_the_vision_model():
     assert "why is this failing" in sent["prompt"]
     import io
     assert Image.open(io.BytesIO(sent["png"])).size == (1600, 900)
+
+
+def hybrid_brain(tmp_path, embed=None):
+    """Three files; a fake embedding that only knows two topics, so exact words need the keyword index."""
+    from jarvis.knowledge import KnowledgeBase
+
+    def fake_embed(texts):
+        return [[1.0, 0.0] if ("sea" in t or "ocean" in t) else [0.0, 1.0] for t in texts]
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "ocean.md").write_text("The sea levels are rising along the coast.")
+    (notes / "errors.md").write_text("Build failed with error E4021 in the payment module.")
+    (notes / "misc.md").write_text("Groceries and a haircut on Saturday.")
+    kb = KnowledgeBase(tmp_path / "b.sqlite", embed or fake_embed)
+    kb.index([notes], log=lambda m: None)
+    return kb
+
+
+def test_hybrid_search_finds_exact_terms_that_meaning_misses(tmp_path):
+    kb = hybrid_brain(tmp_path)
+    hits = kb.hits("E4021", k=2)
+    assert hits[0]["path"].endswith("errors.md") and hits[0]["part"] == 1  # keyword hit outranks the blur
+    assert kb.hits("ocean", k=1)[0]["path"].endswith("ocean.md")  # meaning still works
+
+
+def test_keywords_still_answer_when_the_embedding_model_is_down(tmp_path):
+    kb = hybrid_brain(tmp_path)
+
+    def down(texts):
+        raise ConnectionError("ollama is off")
+
+    kb.embed = down
+    assert "Groceries" in kb.answer_context("haircut groceries")
+
+
+def test_sources_are_reported_and_updates_reach_the_keyword_index(tmp_path):
+    kb = hybrid_brain(tmp_path)
+    got = []
+    text = kb.answer_context("E4021", on_sources=got.extend)
+    assert "errors.md, part 1" in text and got[0]["name"] == "errors.md" and "E4021" in got[0]["snippet"]
+    f = tmp_path / "notes" / "errors.md"
+    f.write_text("All fixed now, nothing to see.")
+    os.utime(f, (f.stat().st_atime, f.stat().st_mtime + 5))
+    kb.index([tmp_path / "notes"], log=lambda m: None)
+    assert kb._keyword_ranks("E4021") == []
+
+
+def test_an_older_database_gets_its_keyword_index_built(tmp_path):
+    from jarvis.knowledge import KnowledgeBase
+
+    kb = hybrid_brain(tmp_path)
+    kb.db.execute("DELETE FROM chunks_fts")
+    kb.db.commit()
+    kb.db.close()
+    again = KnowledgeBase(tmp_path / "b.sqlite", kb.embed)
+    assert again._keyword_ranks("E4021")

@@ -138,7 +138,7 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
                 "properties": {"query": {"type": "string", "description": "What to look for, in plain words."}},
                 "required": ["query"],
             },
-            handler=lambda a: brain.answer_context(str(a.get("query", "")), k=k),
+            handler=lambda a: brain.answer_context(str(a.get("query", "")), k=k, on_sources=bot.on_sources),
         ))
         if bot.router:
             from jarvis.router import add_notes_route

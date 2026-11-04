@@ -416,6 +416,9 @@
   /* conversation */
   .you { border-radius: 20px 20px 6px 20px; padding: 10px 16px; background: var(--glass-strong); }
   .jarvis { padding-left: 16px; border-left: 2px solid var(--accent); }
+  .sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .source { font: 12px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  .source:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
   .task { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 12px 14px; }
   .task-head { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
   .task-goal { font-weight: 600; margin: 2px 0 8px; }
@@ -955,7 +958,7 @@
         speak(ev.text);
       } else if (ev.type === "state") {
         thinking = ev.state === "thinking";
-        if (!thinking && current) addMeta(current, ev.provider, sentAt && firstWordAt ? (firstWordAt - sentAt) / 1000 : 0);
+        if (!thinking && current) { addMeta(current, ev.provider, sentAt && firstWordAt ? (firstWordAt - sentAt) / 1000 : 0); addSources(current); }
         if (!thinking) {
           hideTyping(); current = null; sentAt = 0;
           if (status.online) loadToday();  // "I live in Kigali" or a new reminder shows up straight away
@@ -967,6 +970,8 @@
         if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
       } else if (ev.type === "confirm_done") {
         confirming = false; const a = document.querySelector(".ask"); a && a.remove(); current = null; render();
+      } else if (ev.type === "sources") {
+        pendingSources = ev.items;
       } else if (ev.type === "task") {
         hideTyping(); showTask(ev);
       } else if (ev.type === "wake") {
@@ -1050,6 +1055,24 @@
     $("newsBox").hidden = !(t.headlines || []).length;
   }
   setInterval(() => { if (active && status.online) loadToday(); }, 10 * 60 * 1000);
+
+  // ---------- sources: which files an answer came from ----------
+  let pendingSources = null;
+  function addSources(el) {
+    const items = pendingSources; pendingSources = null;
+    if (!items || !items.length) return;
+    const row = document.createElement("div"); row.className = "sources";
+    const seen = new Set();
+    for (const s of items) {
+      if (seen.has(s.path)) continue; seen.add(s.path);
+      const b = document.createElement("button"); b.type = "button"; b.className = "source";
+      b.textContent = `${s.name} · part ${s.part}`; b.title = s.snippet;
+      if (status.remote) b.disabled = true;
+      else b.onclick = () => post("/api/open", { path: s.path });
+      row.appendChild(b);
+    }
+    el.appendChild(row);
+  }
 
   // ---------- agent mode: a live checklist of the task's steps ----------
   let taskEl = null;

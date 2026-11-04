@@ -16,6 +16,7 @@ re-embedded. A plain NumPy matrix search is plenty fast for a personal corpus
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -30,6 +31,9 @@ TEXT_EXTS = {
 }
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".idea"}
 MAX_FILE_BYTES = 2_000_000
+STOPWORDS = {"the", "and", "for", "what", "where", "did", "was", "were", "with", "about", "from", "that", "this",
+             "have", "has", "how", "why", "when", "who", "you", "your", "my", "mine", "our", "are", "is", "it", "of",
+             "to", "in", "on", "at", "do", "does", "can", "write", "wrote", "notes", "note"}
 
 Embedder = Callable[[list[str]], list[list[float]]]
 
@@ -92,9 +96,14 @@ class KnowledgeBase:
             "CREATE TABLE IF NOT EXISTS chunks (path TEXT, mtime REAL, idx INTEGER, text TEXT, vec BLOB)"
         )
         self.db.execute("CREATE INDEX IF NOT EXISTS chunks_path ON chunks(path)")
+        # Keyword index beside the vectors: names, error codes and exact phrases that embeddings blur.
+        self.db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, path UNINDEXED, idx UNINDEXED)")
+        if (self.db.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0] == 0
+                and self.db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] > 0):
+            self.db.execute("INSERT INTO chunks_fts (text, path, idx) SELECT text, path, idx FROM chunks")
         self.db.commit()
         self._matrix: np.ndarray | None = None
-        self._rows: list[tuple[str, str]] = []
+        self._rows: list[tuple[str, str, int]] = []
 
     def count(self) -> int:
         with self.lock:
@@ -121,16 +130,20 @@ class KnowledgeBase:
                 vecs += self.embed([self.doc_prefix + c for c in chunks[i : i + batch]])
             with self.lock:
                 self.db.execute("DELETE FROM chunks WHERE path = ?", (key,))
+                self.db.execute("DELETE FROM chunks_fts WHERE path = ?", (key,))
                 self.db.executemany(
                     "INSERT INTO chunks VALUES (?, ?, ?, ?, ?)",
                     [(key, mtime, i, c, np.asarray(v, dtype=np.float32).tobytes())
                      for i, (c, v) in enumerate(zip(chunks, vecs))],
                 )
+                self.db.executemany("INSERT INTO chunks_fts (text, path, idx) VALUES (?, ?, ?)",
+                                    [(c, key, i) for i, c in enumerate(chunks)])
                 self.db.commit()
             changed += 1
         removed = [p for p in known if p not in seen]
         with self.lock:
             self.db.executemany("DELETE FROM chunks WHERE path = ?", [(p,) for p in removed])
+            self.db.executemany("DELETE FROM chunks_fts WHERE path = ?", [(p,) for p in removed])
             self.db.commit()
             self._matrix = None
         if changed or removed:
@@ -139,27 +152,73 @@ class KnowledgeBase:
 
     def _load(self) -> None:
         with self.lock:
-            rows = self.db.execute("SELECT path, text, vec FROM chunks").fetchall()
-        self._rows = [(p, t) for p, t, _ in rows]
+            rows = self.db.execute("SELECT path, text, vec, idx FROM chunks").fetchall()
+        self._rows = [(p, t, i) for p, t, _, i in rows]
         if rows:
-            m = np.stack([np.frombuffer(v, dtype=np.float32) for _, _, v in rows])
+            m = np.stack([np.frombuffer(v, dtype=np.float32) for _, _, v, _ in rows])
             self._matrix = m / (np.linalg.norm(m, axis=1, keepdims=True) + 1e-9)
         else:
             self._matrix = np.zeros((0, 1), dtype=np.float32)
 
-    def search(self, query: str, k: int = 4) -> list[tuple[float, str, str]]:
-        """Return (score, path, text) for the k chunks closest in meaning to query."""
+    def _keyword_ranks(self, query: str, limit: int = 20) -> list[tuple[str, int]]:
+        """(path, chunk index) of the best keyword matches, best first (SQLite FTS5, BM25)."""
+        terms = [t for t in re.findall(r"[\w\-]+", query.lower()) if len(t) > 1 and t not in STOPWORDS]
+        if not terms:
+            return []
+        match = " OR ".join(f'"{t}"' for t in terms)
+        with self.lock:
+            try:
+                return self.db.execute("SELECT path, idx FROM chunks_fts WHERE chunks_fts MATCH ? "
+                                       "ORDER BY rank LIMIT ?", (match, limit)).fetchall()
+            except sqlite3.OperationalError:
+                return []
+
+    def hits(self, query: str, k: int = 4) -> list[dict]:
+        """Hybrid search: meaning and keywords, merged by reciprocal rank fusion.
+
+        Each ranking alone misses things: embeddings blur exact names and error codes, keywords
+        miss paraphrases. A chunk scores 1/(60+rank) in each list, so one found by both rises to
+        the top. If the embedding model is down, keywords still answer.
+        """
         if self._matrix is None:
             self._load()
         if not len(self._rows):
             return []
-        q = np.asarray(self.embed([self.query_prefix + query])[0], dtype=np.float32)
-        scores = self._matrix @ (q / (np.linalg.norm(q) + 1e-9))
-        top = np.argsort(-scores)[:k]
-        return [(float(scores[i]), *self._rows[i]) for i in top]
+        cosine = np.zeros(len(self._rows), dtype=np.float32)
+        fused: dict[int, float] = {}
+        try:
+            q = np.asarray(self.embed([self.query_prefix + query])[0], dtype=np.float32)
+            cosine = self._matrix @ (q / (np.linalg.norm(q) + 1e-9))
+            for rank, i in enumerate(np.argsort(-cosine)[:20]):
+                fused[int(i)] = 1 / (60 + rank)
+        except Exception as exc:
+            print(f"  [brain] meaning search unavailable, using keywords only: {exc}")
+        where = {(p, i): n for n, (p, _, i) in enumerate(self._rows)}
+        keyword = set()
+        for rank, key in enumerate(self._keyword_ranks(query)):
+            n = where.get((key[0], int(key[1])))
+            if n is not None:
+                keyword.add(n)
+                fused[n] = fused.get(n, 0) + 1 / (60 + rank)
+        best = sorted(fused, key=fused.get, reverse=True)[:k]
+        out = []
+        for n in best:
+            path, text, idx = self._rows[n]
+            # A keyword hit counts as relevant even when its meaning score alone wouldn't.
+            score = max(float(cosine[n]), 0.35 if n in keyword else 0.0)
+            out.append({"score": score, "path": path, "text": text, "part": idx + 1, "both": n in keyword and cosine[n] >= 0.3})
+        return out
 
-    def answer_context(self, query: str, k: int = 4, min_score: float = 0.3) -> str:
-        hits = [h for h in self.search(query, k) if h[0] >= min_score]
+    def search(self, query: str, k: int = 4) -> list[tuple[float, str, str]]:
+        """Return (score, path, text) for the k best chunks."""
+        return [(h["score"], h["path"], h["text"]) for h in self.hits(query, k)]
+
+    def answer_context(self, query: str, k: int = 4, min_score: float = 0.3, on_sources=None) -> str:
+        hits = [h for h in self.hits(query, k) if h["score"] >= min_score]
         if not hits:
             return "No matching notes found."
-        return "\n\n".join(f"From {Path(p).name} (match {s:.2f}):\n{t}" for s, p, t in hits)
+        if on_sources:
+            on_sources([{"name": Path(h["path"]).name, "path": h["path"], "part": h["part"],
+                         "snippet": re.sub(r"\s+", " ", h["text"])[:160]} for h in hits])
+        return "\n\n".join(f"From {Path(h['path']).name}, part {h['part']} (match {h['score']:.2f}):\n{h['text']}"
+                           for h in hits)

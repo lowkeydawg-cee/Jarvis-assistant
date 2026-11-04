@@ -115,6 +115,7 @@ class WebSession:
         self.bot.on_error = self._on_error
         if self.bot.agent is not None:
             self.bot.agent.on_update = self.hub.publish  # the page shows a live checklist
+        self.bot.on_sources = lambda items: self.hub.publish({"type": "sources", "items": items})
         self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
         self.skills = None  # jarvis.skills.Skills when reminders are on
         self.phone = None  # jarvis.phone.Phone: lets a paired phone use Jarvis
@@ -482,6 +483,14 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
                 if access != "local":
                     return self._json({"error": "Change phone settings on the laptop."}, HTTPStatus.FORBIDDEN)
                 return self._json(session.phone_settings(body))
+            elif path == "/api/open":
+                if access != "local":  # it opens the file on the laptop, so only the laptop may ask
+                    return self._json({"error": "Open it from the laptop."}, HTTPStatus.FORBIDDEN)
+                if session.bot.laptop is None:
+                    return self._json({"error": "Laptop access is off."}, HTTPStatus.CONFLICT)
+                from jarvis.laptop import open_path
+
+                return self._json({"ok": True, "message": open_path(session.bot.laptop, str(body.get("path", "")))})
             elif path == "/api/wake":
                 if access != "local":
                     return self._json({"error": "Change this on the laptop."}, HTTPStatus.FORBIDDEN)

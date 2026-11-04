@@ -157,3 +157,14 @@ def test_a_broken_pdf_does_not_stop_the_scan(tmp_path, home):
     idx.scan()
     assert idx.search("climate")  # the rest of the laptop was still indexed
     assert idx.search("empty_scan")  # and the broken file is still findable by name
+
+
+def test_open_only_documents_inside_the_folders(tmp_path, home):
+    idx = index(tmp_path, home)
+    idx.scan()
+    opened = []
+    assert laptop.open_path(idx, str(home / "Documents/notes.md"), opened.append) == "Opened notes.md."
+    assert laptop.open_path(idx, str(home / "code/app/main.py"), opened.append).startswith("I only open documents")
+    assert laptop.open_path(idx, str(home / "code/app/.env"), opened.append) == "I can't open that one."
+    assert laptop.open_path(idx, str(tmp_path / "elsewhere.pdf"), opened.append) == "I can't open that one."
+    assert len(opened) == 1

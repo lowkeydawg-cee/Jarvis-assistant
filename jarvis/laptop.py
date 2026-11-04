@@ -383,6 +383,25 @@ class LaptopIndex:
         return False
 
 
+# What "open" may launch: documents and media, never programs or scripts.
+OPENABLE = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".txt", ".md", ".csv",
+            ".rtf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".svg", ".mp3", ".wav", ".m4a", ".flac",
+            ".ogg", ".aac", ".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".epub"}
+
+
+def open_path(index: "LaptopIndex", path: str, launch: Callable[[str], None] | None = None) -> str:
+    """Open a document or media file in its usual app, under the same rules as reading it."""
+    p = Path(path).expanduser()
+    if not index.allowed(p):
+        return "I can't open that one."
+    if p.suffix.lower() not in OPENABLE:
+        return "I only open documents, pictures, music and videos, never programs or scripts."
+    if not p.is_file():
+        return "I can't find that file."
+    (launch or os.startfile)(str(p))
+    return f"Opened {p.name}."
+
+
 def _words(text: str) -> str:
     """Split file names so "ClimateEssay_final-v2.docx" is found by "climate essay"."""
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
@@ -697,6 +716,9 @@ def tools(index: LaptopIndex, browser: bool = True) -> list:
                                                "offset": {"type": "integer"}}, "required": ["path"]}),
         Tool("list_folder", "List what's inside a folder on the laptop.", folder,
              {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
+        Tool("open_file", "Open a document, picture, song or video on the laptop in its usual app. Never programs.",
+             lambda a: open_path(index, str(a.get("path", ""))),
+             {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
         Tool("installed_apps", "List or search the programs installed on the laptop.", apps,
              {"type": "object", "properties": {"query": {"type": "string"}}}),
         Tool("running_programs", "What's running right now and how much memory each program uses. Use for 'why "
@@ -733,6 +755,15 @@ def _spoken(rows: list[dict], what: str) -> str:
 
 
 def add_routes(router, index: LaptopIndex) -> None:
+    def open_named(m):
+        q = re.sub(r"\b(on my (laptop|computer|pc)|please)\b", "", m.group("q")).strip()
+        for r in index.search(q, limit=5) if q else []:
+            if Path(r["path"]).suffix.lower() in OPENABLE:
+                return open_path(index, r["path"])
+        return None  # nothing openable by that name: "open the window" isn't a file
+
+    router.add("laptop", r"open (my |the )?(file |document )?(?P<q>.+)", open_named)
+
     def find(m):
         q = re.sub(r"\b(on my (laptop|computer|pc)|please)\b", "", m.group("q")).strip()
         rows = index.search(q, limit=4) if q else []
