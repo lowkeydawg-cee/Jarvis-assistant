@@ -31,6 +31,9 @@ GROUPS: dict[str, str] = {
     "news": r"news|headline|happening|world|latest",
     "screen": r"screen|look at|see this|this error|what's this|whats this",
     "email": r"e-?mails?|mail|inbox|gmail|message from|wrote to me|reply to|draft|recruiter|newsletter|unread",
+    "control": r"\b(volume|sound|louder|quieter|mute|unmute|brightness|brighter|dim|dimmer|pause|resume|play|skip|next|lock|sleep|shut|shutdown|restart|reboot|close|quit|exit|open|launch|start|screenshot|desktop|minimi[sz]e)\b",
+    "trading": r"\b(trad(e|es|ing)|market|markets|profit|profits|loss|pairs?|forex|stocks?|demo|positions?|stop everything|pause|resume|bot|bots|portfolio|balance|pnl|equity)\b",
+    "past": r"\b(did we|we talked|we discuss|last time|last week|yesterday|earlier|conversation|i said|i told|you said|remember when|recall)\b",
     "dev": r"\brepos?\b|project|commit|\bgit\b|diff|branch|test|build|failing|\bbug\b|code|uncommitted|changed in|"
            r"catalog|agent|pull request|merge",
 }
@@ -51,6 +54,9 @@ TOOL_GROUP: dict[str, str] = {
     "news_headlines": "news",
     "look_at_screen": "screen",
     "check_email": "email", "search_email": "email", "read_email": "email", "draft_email": "email",
+    "laptop_control": "control", "open_app_or_site": "control", "close_app": "control", "laptop_power": "control",
+    "trading__*": "trading", "trading_control__*": "trading",
+    "recall_conversations": "past",
     "list_projects": "dev", "project_activity": "dev", "project_status": "dev", "project_diff": "dev",
     "run_project_tests": "dev",
 }
@@ -72,7 +78,12 @@ def group_of(name: str) -> str | None:
     return None
 
 
+def wanted(context: str) -> set[str]:
+    """The tool groups this text could need. Empty means it's nothing to do with the user's own things."""
+    return {g for g, rx in _COMPILED.items() if rx.search(context or "")}
+
+
 def pick(names: list[str], context: str) -> list[str]:
     """The tool names worth sending for this conversation context."""
-    wanted = {g for g, rx in _COMPILED.items() if rx.search(context or "")}
-    return [n for n in names if (group_of(n) is None) or group_of(n) in wanted]
+    groups = wanted(context)
+    return [n for n in names if (group_of(n) is None) or group_of(n) in groups]

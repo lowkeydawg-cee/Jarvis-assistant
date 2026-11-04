@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 from pathlib import Path
@@ -76,6 +77,16 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
             add_journal_routes(bot.router, bot.journal)
         box.register(journal_tool(bot.journal))
         bot.journal.start()
+
+    if cfg["control"]["enabled"] and os.name == "nt":
+        from jarvis.control import Control, add_control_routes, control_tools
+
+        control = Control(data / "apps.json")
+        control.start_background()
+        if bot.router:
+            add_control_routes(bot.router, control)  # before reminders and files: "cancel the shutdown", "open chrome"
+        for tool in control_tools(control):
+            box.register(tool)
 
     from jarvis.calendar_feed import CalendarFeed, calendar_routes, calendar_tool
 
@@ -229,8 +240,12 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
         from jarvis.mcp_client import MCPHub
 
         hub = MCPHub(servers)
-        hub.start()
-        print(f"  [mcp] {hub.register(box)} tools ready")
+
+        def connect():  # about 10 seconds: Jarvis answers meanwhile, and these tools join when they're ready
+            hub.start()
+            print(f"  [mcp] {hub.register(box)} tools ready")
+
+        threading.Thread(target=connect, daemon=True, name="mcp-connect").start()
         closers.append(hub)
 
     return closers

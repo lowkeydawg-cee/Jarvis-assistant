@@ -62,6 +62,9 @@ DEFAULTS: dict[str, Any] = {
         "enabled": True,
         "days": 7,
     },
+    "control": {
+        "enabled": True,               # open apps, sound, brightness, lock; closing and power ask first
+    },
     "dev": {
         "enabled": True,               # developer copilot: git history, diffs, and tests (asks first)
     },

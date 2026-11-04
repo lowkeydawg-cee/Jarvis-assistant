@@ -57,8 +57,12 @@ class Router:
         """
         self.routes.append(Route(name, re.compile(rf"^(?:{pattern})$"), handler, raw))
 
-    def answer(self, text: str) -> tuple[str, str] | None:
-        """Return (route name, spoken reply), or None to let the model answer."""
+    def answer(self, text: str, blocked=()) -> tuple[str, str] | None:
+        """Return (route name, spoken reply), or None to let the model answer.
+
+        A route in `blocked` is never run: it comes back as (name, "") so the caller can refuse.
+        Checking only the reply would be too late, since the handler has already acted by then.
+        """
         t = normalise(text)
         if not t:
             return None
@@ -66,6 +70,8 @@ class Router:
             m = route.pattern.match(t)
             if not m:
                 continue
+            if blocked and (route.name in blocked or route.name.startswith("plugin:")):
+                return route.name, ""
             try:
                 reply = route.handler(m, text) if route.raw else route.handler(m)
             except Exception as exc:  # a broken shortcut must never break the conversation

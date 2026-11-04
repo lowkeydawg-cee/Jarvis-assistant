@@ -31,11 +31,14 @@ TRADING_HINT = ("The owner's trading bot is connected. Its tools (names starting
 
 _YES = re.compile(r"\b(yes|yeah|yep|sure|go ahead|do it|ok|okay|affirmative|please)\b", re.I)
 _NO = re.compile(r"\b(no|nope|don't|do not|stop|cancel|never mind|wait)\b", re.I)
-_EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down|that's all)\b", re.I)
+_EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down(?! (my|the|this) )|that's all)\b", re.I)
 
 
+MAX_TOOL_CHARS = 6000  # about 1,500 tokens; a whole document would use up the free cloud limit
+OLD_TOOL_CHARS = 300
+MAX_PROMPT_CHARS = 22000  # about 5,500 tokens: with the tools it stays under the cloud's 8,000 a minute
 PERSONAL_ROUTES = {"notes", "briefing", "reminder", "schedule", "cancel", "snooze", "remember", "recall", "forget",
-                   "email", "calendar", "journal", "laptop", "dev"}
+                   "email", "calendar", "journal", "laptop", "dev", "control"}
 
 
 def is_yes(text: str) -> bool:
@@ -137,6 +140,14 @@ class Assistant:
 
     def _messages(self) -> list[dict]:
         trimmed = self.history[-self.history_turns * 2 :]
+        # A file read earlier is sent once in full, then only its opening, or every later question pays for it.
+        last_user = max((i for i, m in enumerate(trimmed) if m["role"] == "user"), default=0)
+        trimmed = [{**m, "content": m["content"][:OLD_TOOL_CHARS] + " ..."}
+                   if m["role"] == "tool" and i < last_user and len(str(m.get("content") or "")) > OLD_TOOL_CHARS else m
+                   for i, m in enumerate(trimmed)]
+        # A request over the cloud's limit is refused outright, and the slow local model takes over: drop the oldest.
+        while len(trimmed) > 1 and sum(len(str(m.get("content") or "")) for m in trimmed) > MAX_PROMPT_CHARS:
+            trimmed = trimmed[1:]
         # Never start the window on a dangling tool result.
         while trimmed and trimmed[0]["role"] == "tool":
             trimmed = trimmed[1:]
@@ -192,13 +203,21 @@ class Assistant:
         """Run one turn. Sentences are spoken as they stream in. Returns the full reply."""
         self.speaking_as = speaking_as
         self.history.append({"role": "user", "content": user_text})
+        cached = self.answers.get(user_text) if self.answers is not None else None
+        if cached:
+            print("  [cache] answered from memory")
+            self.last_source = "cached"
+            self.history.append({"role": "assistant", "content": cached})
+            self.speaker.say(cached)
+            return cached
         # A multi-step job goes to the agent first: the instant "find" answer would do only its first half.
         task = False
         if self.agent is not None and self.tools_enabled and not self.is_guest:
             from jarvis.agent import wants_agent
 
             task = wants_agent(user_text)
-        hit = self.router.answer(user_text) if self.router and not task else None
+        blocked = PERSONAL_ROUTES if self.is_guest else ()
+        hit = self.router.answer(user_text, blocked=blocked) if self.router and not task else None
         if hit:
             name, reply = hit
             if self.is_guest and (name in PERSONAL_ROUTES or name.startswith("plugin:")):
@@ -208,13 +227,6 @@ class Assistant:
             self.history.append({"role": "assistant", "content": reply})
             self.speaker.say(reply)
             return reply
-        cached = self.answers.get(user_text) if self.answers is not None else None
-        if cached:
-            print("  [cache] answered from memory")
-            self.last_source = "cached"
-            self.history.append({"role": "assistant", "content": cached})
-            self.speaker.say(cached)
-            return cached
         if task:
             print("  [agent] multi-step task")
             reply = self.agent.run(user_text)
@@ -268,7 +280,7 @@ class Assistant:
                         args = json.loads(args)
                     except json.JSONDecodeError:
                         args = {}
-                result = self.toolbox.call(fn.get("name", ""), args)
+                result = str(self.toolbox.call(fn.get("name", ""), args))[:MAX_TOOL_CHARS]
                 self.history.append({
                     "role": "tool", "content": result, "tool_name": fn.get("name", ""),
                     **({"tool_call_id": call["id"]} if call.get("id") else {}),
