@@ -126,3 +126,12 @@ def test_offline_is_handled(tmp_path):
     assert ask(r, "who is Ada Lovelace") is None  # the model can still try
     with pytest.raises(OnlineError):
         o.weather()
+
+
+def test_wikipedia_only_answers_when_the_article_really_matches(online):
+    o, r = online
+    o.lookup = lambda q, sentences=2: {"title": "BBC Television Shakespeare", "text": "A series of adaptations.", "url": ""}
+    assert ask(r, "what are the uncommitted changes in clean-project and is anything risky") is None
+    assert ask(r, "what is the boiling point of water") is None  # the article doesn't mention water
+    o.lookup = lambda q, sentences=2: {"title": "Kigali", "text": "Kigali is the capital of Rwanda.", "url": ""}
+    assert ask(r, "what is the capital of Rwanda") == "Kigali is the capital of Rwanda. That's from Wikipedia."

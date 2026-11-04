@@ -77,6 +77,7 @@ class Assistant:
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
         self.metrics = None  # jarvis.metrics.Metrics: timing of every turn
+        self.answers = None  # jarvis.brainpick.AnswerCache: repeated general questions
         self.plugins: list[dict] = []  # what load_plugins found
         self._first_word_at = 0.0
         self._prompt_chars = 0
@@ -93,6 +94,7 @@ class Assistant:
         other.router, other.memory, other.skills, other.online = self.router, self.memory, self.skills, self.online
         other.owner_name, other.notifier = self.owner_name, self.notifier
         other.laptop, other.journal, other.metrics = self.laptop, self.journal, self.metrics
+        other.answers = self.answers
         return other
 
     # ---- inbox -----------------------------------------------------------
@@ -171,6 +173,9 @@ class Assistant:
         self._prompt_chars = 0
         calls_before = self.toolbox.call_count
         reply = self._respond(user_text, speaking_as)
+        if (self.answers is not None and self.last_source in ("cloud", "local")
+                and self.toolbox.call_count == calls_before):  # no tools: it came from general knowledge
+            self.answers.put(user_text, reply)
         if self.metrics is not None:
             done = time.monotonic()
             self.metrics.record(self.last_source, ((self._first_word_at or done) - started) * 1000, (done - started) * 1000,
@@ -197,6 +202,13 @@ class Assistant:
             self.history.append({"role": "assistant", "content": reply})
             self.speaker.say(reply)
             return reply
+        cached = self.answers.get(user_text) if self.answers is not None else None
+        if cached:
+            print("  [cache] answered from memory")
+            self.last_source = "cached"
+            self.history.append({"role": "assistant", "content": cached})
+            self.speaker.say(cached)
+            return cached
         if self.agent is not None and self.tools_enabled and not self.is_guest:
             from jarvis.agent import wants_agent
 

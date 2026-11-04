@@ -15,6 +15,7 @@ DEFAULTS: dict[str, Any] = {
         "temperature": 0.6,
         "history_turns": 12,
         "timeout": 300,
+        "local_hard_model": "",        # a bigger Ollama model for hard questions in Private mode, on stronger PCs
         "keep_alive": "30m",           # how long Ollama keeps the model loaded between questions
         # hybrid: cloud first, local Ollama as fallback. local: Ollama only. cloud: cloud only.
         "provider": "hybrid",
@@ -28,6 +29,7 @@ DEFAULTS: dict[str, Any] = {
             # Tried in order when the main model is busy (rate limits are per model) or gone,
             # before falling back to the slow local model.
             "backup_models": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"],
+            "fast_model": "openai/gpt-oss-20b",  # easy questions go here first; blank to always use the main model
             "api_key_env": "GROQ_API_KEY",
             "api_key": "",
             "timeout": 60,
@@ -54,6 +56,11 @@ DEFAULTS: dict[str, Any] = {
     "plugins": {
         "enabled": True,
         "folder": "",                  # blank: a plugins folder inside data_dir. See docs/PLUGINS.md
+    },
+    # Repeated general questions are answered from a local cache, with no cloud call.
+    "answer_cache": {
+        "enabled": True,
+        "days": 7,
     },
     "dev": {
         "enabled": True,               # developer copilot: git history, diffs, and tests (asks first)

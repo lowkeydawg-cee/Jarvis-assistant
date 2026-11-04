@@ -61,6 +61,10 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     from jarvis.metrics import Metrics
 
     bot.metrics = Metrics(data / "metrics.jsonl")
+    if cfg["answer_cache"]["enabled"]:
+        from jarvis.brainpick import AnswerCache
+
+        bot.answers = AnswerCache(data / "answers.json", days=float(cfg["answer_cache"].get("days", 7)))
     if cfg["journal"]["enabled"]:
         from jarvis.journal import Journal, add_journal_routes, journal_tool
 

@@ -163,13 +163,17 @@ class HybridLLM:
 
     def __init__(self, local: OllamaClient, cloud: OpenAICompatClient | None, private: bool = False,
                  log: Callable[[str], None] = print, local_tools: bool = True,
-                 backups: list[OpenAICompatClient] | None = None):
+                 backups: list[OpenAICompatClient] | None = None, fast: OpenAICompatClient | None = None,
+                 local_hard: OllamaClient | None = None):
         self.local = local
         self.local_tools = local_tools
         self.cloud = cloud
         # Other cloud models to try before the slow local one. Groq rate-limits each model separately,
         # so a second model roughly doubles the free questions per minute.
         self.backups = backups or []
+        self.fast = fast  # a small quick cloud model for easy questions
+        self.local_hard = local_hard  # a bigger local model for hard questions, on stronger PCs
+        self.last_difficulty = ""
         self.private = private
         self.log = log
         self.last_provider = ""
@@ -200,6 +204,9 @@ class HybridLLM:
         return self.chat_stream(messages, tools, on_text=None)
 
     def chat_stream(self, messages, tools=None, on_text=None):
+        from jarvis.brainpick import difficulty
+
+        self.last_difficulty = difficulty(messages, tools)
         if self.cloud and not self.private:
             started = False
 
@@ -209,7 +216,10 @@ class HybridLLM:
                 if on_text:
                     on_text(piece)
 
-            for client in [self.cloud, *self.backups]:
+            order = [self.cloud, *self.backups]
+            if self.fast and self.last_difficulty == "easy":
+                order = [self.fast, *[c for c in order if c.model != self.fast.model]]
+            for client in order:
                 try:
                     msg = client.chat_stream(messages, tools, relay)
                     self.last_provider = "cloud"
@@ -226,9 +236,10 @@ class HybridLLM:
             if messages and messages[0].get("role") == "system":
                 messages = [{"role": "system", "content": lite_system_prompt()}, *messages[1:]]
             tools = None
-        msg = self.local.chat_stream(messages, tools, on_text)
+        local = self.local_hard if self.local_hard and self.last_difficulty == "hard" else self.local
+        msg = local.chat_stream(messages, tools, on_text)
         self.last_provider = "local"
-        self.last_model = self.local.model
+        self.last_model = local.model
         return msg
 
     def warm(self) -> None:
@@ -262,5 +273,11 @@ def build_llm(cfg: dict, log: Callable[[str], None] = print):
                                timeout=int(cc.get("timeout", 60)))
     backups = [OpenAICompatClient(cc["base_url"], key, m, c["temperature"], timeout=int(cc.get("timeout", 60)))
                for m in cc.get("backup_models") or [] if m and m != cc["model"]]
+    fast = None
+    if cc.get("fast_model") and cc["fast_model"] != cc["model"]:
+        fast = OpenAICompatClient(cc["base_url"], key, cc["fast_model"], c["temperature"], timeout=int(cc.get("timeout", 60)))
+    hard = None
+    if c.get("local_hard_model"):
+        hard = OllamaClient(c["host"], c["local_hard_model"], c["temperature"], timeout=int(c.get("timeout", 300)))
     return HybridLLM(local, cloud, private=bool(c.get("private", False)), log=log, local_tools=local_tools,
-                     backups=backups)
+                     backups=backups, fast=fast, local_hard=hard)

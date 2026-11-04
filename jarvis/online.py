@@ -217,11 +217,20 @@ def add_online_routes(router, online: Online) -> None:
         q = next((v for k, v in m.groupdict().items() if v and k.startswith("q")), "")
         if not q or KNOWLEDGE_SKIP.search(q):
             return None  # personal or vague: let the model handle it
+        words = [w for w in re.findall(r"[a-z0-9]+", q.lower()) if len(w) > 2 and w not in ("the", "and", "for", "from", "with")]
+        if not words or len(words) > 4 or re.search(r"\b(and|or|but|if|because|anything|something)\b", q):
+            return None  # not one thing to look up: Wikipedia once answered this with BBC Shakespeare
         try:
             hit = online.lookup(q)
         except OnlineError:
             return None
-        return f"{hit['text']} That's from Wikipedia." if hit else None
+        if not hit:
+            return None
+        # Only if the article is really about this: every word must appear in its title or summary.
+        about = f"{hit['title']} {hit['text']}".lower()
+        if not all(w[:5] in about for w in words):
+            return None
+        return f"{hit['text']} That's from Wikipedia."
 
     router.add("knowledge", r"((who|what) (is|was|are|were)|whats|whos) (a |an |the )?(?P<q1>.+)|(tell me )?about (?P<q2>.+)|"
                             r"(look up|search for|search wikipedia for|define) (?P<q3>.+)|who invented (?P<q4>.+)",
