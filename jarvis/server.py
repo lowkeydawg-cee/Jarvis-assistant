@@ -113,6 +113,8 @@ class WebSession:
         self.confirming = threading.Event()
         self.bot = Assistant(llm, self.speaker, self._listen, cfg)
         self.bot.on_error = self._on_error
+        if self.bot.agent is not None:
+            self.bot.agent.on_update = self.hub.publish  # the page shows a live checklist
         self.voice = None  # jarvis.voiceid.VoiceID when voice recognition is set up
         self.skills = None  # jarvis.skills.Skills when reminders are on
         self.phone = None  # jarvis.phone.Phone: lets a paired phone use Jarvis

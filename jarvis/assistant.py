@@ -75,6 +75,10 @@ class Assistant:
         self.mailbox = None  # jarvis.mail.Mailbox: Gmail, read and draft only
         self.journal = None  # jarvis.journal.Journal: memory of past conversations
         self.channel = "app"  # where this conversation happens: app, telegram...
+        # Multi-step goals. Each Assistant gets its own, so tasks use its speaker and confirmations.
+        from jarvis.agent import TaskAgent
+
+        self.agent = TaskAgent(self) if cfg.get("agent", {}).get("enabled", True) else None
         self.telegram = None  # jarvis.telegram.TelegramBridge when a bot token is set
 
     def share_with(self, other: "Assistant") -> "Assistant":
@@ -178,6 +182,16 @@ class Assistant:
             self.history.append({"role": "assistant", "content": reply})
             self.speaker.say(reply)
             return reply
+        if self.agent is not None and self.tools_enabled and not self.is_guest:
+            from jarvis.agent import wants_agent
+
+            if wants_agent(user_text):
+                print("  [agent] multi-step task")
+                reply = self.agent.run(user_text)
+                self.last_source = "agent"
+                self.history.append({"role": "assistant", "content": reply})
+                self.speaker.say(reply)
+                return reply
         # Only the tools this conversation could need: the last few user messages decide, so a
         # follow-up like "open it" still gets the file tools that the previous question needed.
         recent = " ".join(m["content"] for m in self.history[-6:] if m.get("role") == "user")

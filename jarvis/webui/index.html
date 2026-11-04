@@ -416,6 +416,18 @@
   /* conversation */
   .you { border-radius: 20px 20px 6px 20px; padding: 10px 16px; background: var(--glass-strong); }
   .jarvis { padding-left: 16px; border-left: 2px solid var(--accent); }
+  .task { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 12px 14px; }
+  .task-head { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+  .task-goal { font-weight: 600; margin: 2px 0 8px; }
+  .task ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+  .task li { display: grid; grid-template-columns: 18px 1fr; gap: 0 6px; color: var(--muted); }
+  .task li::before { content: "○"; color: var(--faint); }
+  .task li[data-s="running"] { color: var(--text); }
+  .task li[data-s="running"]::before { content: "◐"; color: var(--accent); }
+  .task li[data-s="done"]::before { content: "✓"; color: #7fae6e; }
+  .task li[data-s="failed"]::before { content: "✕"; color: var(--danger); }
+  .task li[data-s="skipped"]::before { content: "–"; }
+  .task li small { grid-column: 2; color: var(--danger); }
   .ask, .alert { border-radius: var(--radius); }
   .alert { background: linear-gradient(135deg, var(--accent-soft), var(--glass)); border-color: var(--accent); }
 
@@ -680,7 +692,7 @@
   function note(text, error = false) { const el = add("note" + (error ? " error" : ""), text); return el; }
   function addMeta(el, source, secs) {
     const meta = document.createElement("div"); meta.className = "meta";
-    const where = { instant: "Instant", cloud: "Cloud", local: "On this laptop" }[source] || "";
+    const where = { instant: "Instant", cached: "Remembered", cloud: "Cloud", local: "On this laptop", agent: "Task" }[source] || "";
     const label = document.createElement("span");
     label.textContent = [where, source !== "instant" && secs >= 0.1 ? secs.toFixed(1) + " s" : ""].filter(Boolean).join(" · ");
     const again = document.createElement("button"); again.type = "button"; again.textContent = "Say again";
@@ -955,6 +967,8 @@
         if (!speechSynthesis.speaking && !queue.length) afterSpeaking();
       } else if (ev.type === "confirm_done") {
         confirming = false; const a = document.querySelector(".ask"); a && a.remove(); current = null; render();
+      } else if (ev.type === "task") {
+        hideTyping(); showTask(ev);
       } else if (ev.type === "wake") {
         // The laptop heard "Hey Jarvis". Only the laptop's own page answers, never a phone.
         if (!status.remote && !listening) { chime(); stopSpeaking(true); setTimeout(() => startListening(), 250); }
@@ -1036,6 +1050,29 @@
     $("newsBox").hidden = !(t.headlines || []).length;
   }
   setInterval(() => { if (active && status.online) loadToday(); }, 10 * 60 * 1000);
+
+  // ---------- agent mode: a live checklist of the task's steps ----------
+  let taskEl = null;
+  function showTask(ev) {
+    if (!taskEl || !taskEl.isConnected || taskEl.dataset.goal !== ev.goal) {
+      taskEl = document.createElement("div"); taskEl.className = "task"; taskEl.dataset.goal = ev.goal;
+      $("log").appendChild(taskEl);
+    }
+    taskEl.innerHTML = "";
+    const head = document.createElement("div"); head.className = "task-head";
+    head.textContent = { running: "Working on it", finished: "Task finished", failed: "Task failed", stopped: "Task stopped" }[ev.state] || "Task";
+    const goal = document.createElement("div"); goal.className = "task-goal"; goal.textContent = ev.goal;
+    const list = document.createElement("ol");
+    for (const s of ev.steps) {
+      const li = document.createElement("li"); li.dataset.s = s.status;
+      const name = document.createElement("span"); name.textContent = s.text;
+      li.appendChild(name);
+      if (s.note && s.status === "failed") { const n = document.createElement("small"); n.textContent = s.note; li.appendChild(n); }
+      list.appendChild(li);
+    }
+    taskEl.append(head, goal, list);
+    scrollDown();
+  }
 
   // ---------- thinking indicator ----------
   let typingEl = null;
