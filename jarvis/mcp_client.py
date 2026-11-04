@@ -55,6 +55,7 @@ class MCPHub:
         self.stack = AsyncExitStack()
         self.sessions: dict[str, Any] = {}
         self.tools: dict[str, list[Any]] = {}
+        self.errors: dict[str, str] = {}   # server -> why it failed to start
 
     def _run(self, coro, timeout: float | None = None):
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout or self.timeout)
@@ -68,7 +69,8 @@ class MCPHub:
                 self._run(self._connect(name, cfg), timeout=cfg.get("startup_timeout", 60))
                 print(f"  [mcp] {name}: {len(self.tools[name])} tools")
             except Exception as exc:
-                print(f"  [mcp] {name} failed to start: {exc}")
+                self.errors[name] = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                print(f"  [mcp] {name} failed to start: {self.errors[name]}")
 
     async def _connect(self, name: str, cfg: dict) -> None:
         from mcp import ClientSession, StdioServerParameters
