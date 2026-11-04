@@ -51,6 +51,9 @@ DEFAULTS: dict[str, Any] = {
         "drafts_folder": "[Gmail]/Drafts",
     },
     # Memory of past conversations: a local journal plus a short summary of each day.
+    "dev": {
+        "enabled": True,               # developer copilot: git history, diffs, and tests (asks first)
+    },
     "agent": {
         "enabled": True,               # multi-step tasks: "find my CV and draft a cover letter"
     },

@@ -31,6 +31,8 @@ GROUPS: dict[str, str] = {
     "news": r"news|headline|happening|world|latest",
     "screen": r"screen|look at|see this|this error|what's this|whats this",
     "email": r"e-?mails?|mail|inbox|gmail|message from|wrote to me|reply to|draft|recruiter|newsletter|unread",
+    "dev": r"\brepos?\b|project|commit|\bgit\b|diff|branch|test|build|failing|\bbug\b|code|uncommitted|changed in|"
+           r"catalog|agent|pull request|merge",
 }
 # Tool name (or "prefix*") -> group. Names not listed here are always sent.
 TOOL_GROUP: dict[str, str] = {
@@ -49,6 +51,8 @@ TOOL_GROUP: dict[str, str] = {
     "news_headlines": "news",
     "look_at_screen": "screen",
     "check_email": "email", "search_email": "email", "read_email": "email", "draft_email": "email",
+    "list_projects": "dev", "project_activity": "dev", "project_status": "dev", "project_diff": "dev",
+    "run_project_tests": "dev",
 }
 _COMPILED = {g: re.compile(p, re.I) for g, p in GROUPS.items()}
 

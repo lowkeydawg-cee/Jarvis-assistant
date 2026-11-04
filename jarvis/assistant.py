@@ -34,7 +34,7 @@ _EXIT = re.compile(r"^\s*(goodbye|bye|exit|quit|shut down|that's all)\b", re.I)
 
 
 PERSONAL_ROUTES = {"notes", "briefing", "reminder", "schedule", "cancel", "snooze", "remember", "recall", "forget",
-                   "email", "calendar", "journal", "laptop"}
+                   "email", "calendar", "journal", "laptop", "dev"}
 
 
 def is_yes(text: str) -> bool:

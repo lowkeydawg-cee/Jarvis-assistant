@@ -80,6 +80,16 @@ def add_features(bot: Assistant, cfg: dict, llm: OllamaClient) -> list:
     for tool in calendar_tool(bot.calendar):
         box.register(tool)
 
+    if cfg["dev"]["enabled"]:
+        from jarvis.devtools import DevTools, add_dev_routes, dev_tools
+        from jarvis.laptop import default_roots
+
+        dev = DevTools(cfg["laptop"].get("folders") or default_roots(), cfg["proactive"].get("git_repos") or [])
+        if bot.router:
+            add_dev_routes(bot.router, dev)
+        for tool in dev_tools(dev):
+            box.register(tool)
+
     if cfg["email"]["enabled"]:
         from jarvis.mail import add_mail_routes, mail_tools, mailbox_from_env
 
