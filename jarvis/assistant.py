@@ -21,12 +21,15 @@ from jarvis.tools import ToolBox
 
 # Added to the prompt only when the trading bot (TradingBots/pairs-bot) is connected over MCP.
 # Without it, a model asked "how does the market look?" tends to say it has no live data.
-TRADING_HINT = ("The owner's trading bot is connected. Its tools (names starting with trading__) have live data "
-                "about the stock market and the bot. For any question about the market, stocks, trading, pairs, "
-                "profit or the bot, call the matching trading tool first and answer from what it returns: "
-                "get_market_brief for how the market looks, get_market_watch for opportunities, get_bot_status, "
-                "get_profit, get_recent_trades, get_demo_results, explain for one pair. Never say you lack market "
-                "data while these tools are available. Summarise in two or three spoken sentences.")
+TRADING_HINT = ("The owner's trading bot is connected. Its tools (names starting with trading__) read what the "
+                "bot's market watcher logged about US stocks, world funds, gold, oil, currencies and crypto. For any "
+                "question about the market, trading, pairs, profit or the bot, call the matching trading tool first "
+                "and answer only from what it returns: get_market_brief for how the markets look and where conditions "
+                "are best now, get_timing_report for when markets were good over the past days, get_market_watch for "
+                "opportunities, get_bot_status, get_profit, get_recent_trades, get_demo_results, explain for one pair. "
+                "If the result says NOT LIVE or SIMULATED PRICES, say that first and plainly: never call old or "
+                "simulated data live, and never claim a pattern over days the result doesn't cover. "
+                "Summarise in two or three spoken sentences.")
 
 _YES = re.compile(r"\b(yes|yeah|yep|sure|go ahead|do it|ok|okay|affirmative|please)\b", re.I)
 _NO = re.compile(r"\b(no|nope|don't|do not|stop|cancel|never mind|wait)\b", re.I)

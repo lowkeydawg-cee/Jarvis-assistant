@@ -7,6 +7,7 @@ answer "I have no live market data" without calling the tool. So these
 questions are routed in code, like the time or the battery:
 
     "how does the market look", "how are stocks doing"     -> get_market_brief
+    "when was the best time to trade this week"            -> get_timing_report
     "where should I trade now", "how's crypto / gold / the dollar" -> get_market_brief
     "what's strong right now", "any opportunities/signals" -> get_market_watch
     "how much profit", "my p and l"                         -> get_profit
@@ -24,6 +25,10 @@ from typing import Callable
 
 # Checked in order: the first pattern that matches the whole request wins.
 INTENTS: list[tuple[str, str, str]] = [
+    ("timing", r".*\b(when (was|were|is|are) (the )?(market|markets|it|crypto|stocks?)? ?(good|best|favou?rable)|"
+               r"(best|good|favou?rable) (time|times|hours?|days?) to (trade|enter|buy)|when (could|should|would) "
+               r"(i|we) have (entered|traded|bought)|weekly report|week in review|this week'?s? (report|results)|"
+               r"timing report)\b.*", "get_timing_report"),
     ("where", r".*\b(where (should|to|can|do) (i|we) (trade|invest|look)|which market|best market|best place to trade|"
               r"where.*(favou?rable|best|good) to trade|favou?rable (market|place))\b.*", "get_market_brief"),
     ("profit", r".*\b(profit|profits|pnl|p and l|p n l|how much (did|have) (i|we|it) (made|make|earn|earned|lost|lose))\b.*",
@@ -38,7 +43,8 @@ INTENTS: list[tuple[str, str, str]] = [
      "get_market_brief"),
 ]
 
-_SPOKEN_BRIEF_LINES = ("Mood:", "Best now:", "World:", "Relationships:", "Signals:", "Since last brief:")
+_WARNINGS = ("NOT LIVE", "SIMULATED PRICES")
+_SPOKEN_BRIEF_LINES = _WARNINGS + ("Mood:", "Best now:", "World:", "Relationships:", "Signals:", "Since last brief:")
 
 
 def _short_best(line: str) -> str:
@@ -59,6 +65,11 @@ def spoken(tool: str, text: str) -> str:
             keep.append("Recent alerts: " + "; ".join(a.split(": ", 1)[-1] for a in alerts))
         keep.append("That's how it looks now, not a forecast.")
         return " ".join(keep)
+    if tool == "get_timing_report":
+        warn = [ln for ln in lines if ln.startswith(_WARNINGS)]
+        body = [ln for ln in lines if not ln.startswith(_WARNINGS)]
+        ranked = [ln for ln in body if ln[:1].isdigit()][:2]
+        return " ".join(warn + body[:1] + ranked + body[-1:])
     return " ".join(lines[:5])
 
 

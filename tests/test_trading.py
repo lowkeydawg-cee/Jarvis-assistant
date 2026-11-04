@@ -15,7 +15,7 @@ This describes the market now; it is not a forecast.
 Alerts in the last day:
 - 5 minutes ago: MARKET STRESSED: spread moves are 1.8x normal."""
 
-TOOLS = ["trading__get_market_brief", "trading__get_market_watch", "trading__get_bot_status",
+TOOLS = ["trading__get_timing_report", "trading__get_market_brief", "trading__get_market_watch", "trading__get_bot_status",
          "trading__get_profit", "trading__get_recent_trades", "trading__explain", "web_search"]
 
 
@@ -52,7 +52,11 @@ def test_each_question_goes_to_the_right_tool():
                     ("how is bitcoin doing", "trading__get_market_brief"),
                     ("what about ethereum and gold", "trading__get_market_brief"),
                     ("how's the euro against the dollar", "trading__get_market_brief"),
-                    ("is crypto favourable today", "trading__get_market_brief")):
+                    ("is crypto favourable today", "trading__get_market_brief"),
+                    ("when was the best time to trade this week", "trading__get_timing_report"),
+                    ("when was the market good", "trading__get_timing_report"),
+                    ("when could I have entered", "trading__get_timing_report"),
+                    ("give me the weekly report", "trading__get_timing_report")):
         calls.clear()
         assert r.answer(q) is not None, q
         assert calls == [tool], q
@@ -76,3 +80,18 @@ def test_spoken_brief_is_short():
     assert s.startswith("Mood: stressed") and "banks" not in s and len(s) < 900
     assert "Best now: 1. Crypto good" in s and "3. Gold" in s and "4. Currencies" not in s
     assert "Closed now: World stocks" in s and "risk-off" in s
+
+
+def test_old_or_simulated_data_is_said_first():
+    text = ("NOT LIVE: the watcher last scanned 3 days ago and isn't running now, so this is old.\n" + BRIEF)
+    s = spoken("get_market_brief", text)
+    assert s.startswith("NOT LIVE")
+    report = ("SIMULATED PRICES: offline demo.\nWhen the markets were good, last 7 days.\n1. Crypto (a).\n"
+              "2. Bonds (b).\n3. Oil (c).\nEntries you could have taken: x.\nThis is what happened, not a forecast.")
+    s = spoken("get_timing_report", report)
+    assert s.startswith("SIMULATED PRICES") and "2. Bonds" in s and "3. Oil" not in s and s.endswith("forecast.")
+
+
+def test_trading_hint_never_calls_old_data_live():
+    from jarvis.assistant import TRADING_HINT
+    assert "NOT LIVE" in TRADING_HINT and "get_timing_report" in TRADING_HINT and "have live data" not in TRADING_HINT
