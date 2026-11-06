@@ -73,7 +73,7 @@ def spoken(tool: str, text: str) -> str:
         warn = [ln for ln in lines if ln.startswith(_WARNINGS)]
         body = [ln for ln in lines if not ln.startswith(_WARNINGS)]
         ranked = [ln for ln in body if ln[:1].isdigit()][:2]
-        return " ".join(warn + body[:1] + ranked + body[-1:])
+        return " ".join(warn + body[:1] + ranked + body[1:][-1:])
     return " ".join(lines[:5])
 
 
