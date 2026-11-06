@@ -50,6 +50,17 @@ class EventHub:
         self.active = client
         self.publish({"type": "active", "client": client})
 
+    def join(self, client: str, q: queue.Queue, claim: bool) -> None:
+        """A tab connected. It takes over only if it asked to or nobody else is there; otherwise it's told to stand down.
+
+        Taking over on every connection meant that after sleep or a restart, whichever tab reconnected
+        last won, even one hidden in the background, and it then listened and spoke instead of yours.
+        """
+        if claim or self.active in (None, client) or self.active not in self.clients:
+            self.claim(client)
+        else:
+            q.put({"type": "active", "client": self.active})
+
     def subscribe(self, client: str = "") -> queue.Queue:
         q: queue.Queue = queue.Queue()
         with self._lock:
@@ -557,10 +568,11 @@ def make_handler(session: WebSession, allowed_hosts: set[str]):
             self._json({"ok": True, **session.status()})
 
         def _events(self):
-            client = parse_qs(urlsplit(self.path).query).get("client", [""])[0][:64]
+            query = parse_qs(urlsplit(self.path).query)
+            client = query.get("client", [""])[0][:64]
             q = session.hub.subscribe(client)
             if client:
-                session.hub.claim(client)
+                session.hub.join(client, q, claim="claim" in query)
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -595,5 +607,16 @@ def serve(session: WebSession, host: str = "127.0.0.1", port: int = 8765, open_b
     url = f"http://{'localhost' if host in {'127.0.0.1', '0.0.0.0'} else host}:{port}"
     print(f"  Jarvis is live at {url}  (Ctrl+C to stop)")
     if open_browser:
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+        threading.Timer(REJOIN_SECONDS, open_page, (session, url)).start()
     return httpd, url
+
+
+REJOIN_SECONDS = 5  # open tabs retry every 2 seconds, so by now any page still open has come back
+
+
+def open_page(session: WebSession, url: str, opener=webbrowser.open) -> bool:
+    """Open Jarvis, unless a page is already open: each start used to add one more tab."""
+    if session.hub.clients:
+        return False
+    opener(url)
+    return True

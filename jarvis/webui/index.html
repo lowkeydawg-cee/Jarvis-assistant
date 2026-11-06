@@ -636,7 +636,7 @@
     <label class="toggle"><input id="private" type="checkbox"><span>Private mode<small id="privateNote">Keep all thinking on this computer.</small></span></label>
     <label class="toggle"><input id="handsfree" type="checkbox"><span>Hands-free<small>Start listening again after each reply.</small></span></label>
     <label class="toggle" id="wakeRow" hidden><input id="wakeOn" type="checkbox"><span>Say "Hey Jarvis"<small id="wakeNote">The laptop listens for "Hey Jarvis", offline, then Jarvis starts listening. Keeps the laptop microphone open.</small></span></label>
-    <label class="toggle"><input id="bargein" type="checkbox"><span>Interrupt by talking<small>Talk over Jarvis to stop it. Use headphones, or it may hear itself.</small></span></label>
+    <label class="toggle"><input id="bargein" type="checkbox"><span>Interrupt by talking<small>Talk over Jarvis to stop it. It ignores its own voice, but headphones work best.</small></span></label>
     <div class="field">
       <span class="label">Theme</span>
       <div class="row">
@@ -775,21 +775,42 @@
   speechSynthesis.onvoiceschanged = loadVoices;
   loadVoices();
 
+  // What Jarvis just said, so the mic can recognise its own voice coming back through the speakers.
+  const spoken = [];
+  const ECHO_WINDOW_MS = 12000;
+  const wordsOf = (t) => t.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean);
+  const pairsOf = (w) => w.slice(0, -1).map((x, i) => x + " " + w[i + 1]);
+  // Word pairs, not single words: "what is the weather" shares words with "the weather is sunny", but isn't an echo.
+  function isEcho(text) {
+    const said = pairsOf(wordsOf(text));
+    if (!said.length) return false;
+    const now = Date.now();
+    const recent = new Set(spoken.filter((s) => now - s.at < ECHO_WINDOW_MS).flatMap((s) => pairsOf(s.words)));
+    return said.filter((p) => recent.has(p)).length / said.length >= 0.5;
+  }
   function speak(text, voiceName) {
     if (!active) return;
     queue.push([text, voiceName]);
+    // You're talking: a reminder or alert waits for you to finish, rather than being recorded as your words.
+    if (listening && !bargeMode) { render(); return; }
     if (!speechSynthesis.speaking) next();
     render();
   }
   function next() {
     const item = queue.shift();
-    if (!item) { render(); afterSpeaking(); return; }
+    if (!item) {
+      if (bargeMode && listening) dropListening();  // nobody interrupted, so the mic closes with the speech
+      render(); afterSpeaking(); return;
+    }
     const [text, voiceName] = item;
+    const line = { at: Date.now(), words: wordsOf(text) };
+    spoken.push(line);
+    if (spoken.length > 20) spoken.shift();
     const u = new SpeechSynthesisUtterance(text);
     const v = voices.find((x) => x.name === (voiceName || prefs.voice || $("voice").value));
     if (v) { u.voice = v; u.lang = v.lang; }
     u.rate = prefs.rate; u.pitch = prefs.pitch;
-    u.onend = u.onerror = () => next();
+    u.onend = u.onerror = () => { line.at = Date.now(); next(); };
     speechSynthesis.speak(u);
     render();
     if (prefs.bargein && recognizer && !listening) startListening(true);
@@ -800,18 +821,23 @@
     if (tellServer && thinking) post("/api/interrupt");
     render();
   }
+  const MIC_AFTER_SPEECH_MS = 700;
   function afterSpeaking() {
     if (thinking || !active) return;
-    if (confirming || prefs.handsfree) setTimeout(() => { if (!speechSynthesis.speaking && !queue.length) startListening(); }, 250);
+    // Long enough for the speakers and the room to go quiet, or the mic catches the end of the sentence.
+    if (confirming || prefs.handsfree) setTimeout(() => { if (!thinking && !speechSynthesis.speaking && !queue.length) startListening(); }, MIC_AFTER_SPEECH_MS);
   }
 
   // ---------- microphone: live level meter, and a recording for voice recognition ----------
   const bars = [...document.querySelectorAll(".meter i")];
-  const mic = { stream: null, ctx: null, raf: 0, chunks: [], rate: 48000, recording: false };
+  const mic = { stream: null, ctx: null, raf: 0, chunks: [], rate: 48000, recording: false, opening: 0 };
   async function openMic(record) {
     closeMic();
+    const mine = mic.opening;
     try {
-      mic.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (mine !== mic.opening) { stream.getTracks().forEach((t) => t.stop()); return false; }  // closed while it was opening
+      mic.stream = stream;
       mic.ctx = new AudioContext();
       mic.rate = mic.ctx.sampleRate;
       const src = mic.ctx.createMediaStreamSource(mic.stream);
@@ -820,7 +846,8 @@
       if (record) {
         const proc = mic.ctx.createScriptProcessor(4096, 1, 1);
         proc.onaudioprocess = (e) => { if (mic.recording) mic.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
-        src.connect(proc); proc.connect(mic.ctx.destination);
+        const silent = mic.ctx.createGain(); silent.gain.value = 0;  // the recorder only runs if connected; keep it inaudible
+        src.connect(proc); proc.connect(silent); silent.connect(mic.ctx.destination);
       }
       const data = new Uint8Array(an.fftSize);
       const tick = () => {
@@ -835,6 +862,7 @@
     } catch { return false; /* the meter is a nicety; listening still works without it */ }
   }
   function closeMic() {
+    mic.opening++;
     cancelAnimationFrame(mic.raf);
     if (mic.stream) mic.stream.getTracks().forEach((t) => t.stop());
     if (mic.ctx) mic.ctx.close();
@@ -860,14 +888,26 @@
   // Keep listening through short pauses and send once you've been quiet for a moment, so one
   // sentence with a breath in the middle isn't split into two messages.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const PAUSE_MS = 1300;
-  let recognizer = null, bargeMode = false, heard = "", pauseTimer = 0;
+  const PAUSE_MS = 1500, SHORT_PAUSE_MS = 2200, ANSWER_PAUSE_MS = 800;
+  let recognizer = null, bargeMode = false, heard = "", interimNow = "", pauseTimer = 0, accepting = false;
+  // A couple of words is usually the start of a sentence, so wait longer. A yes or no is complete.
+  const quietFor = (text) => confirming ? ANSWER_PAUSE_MS : wordsOf(text).length <= 2 ? SHORT_PAUSE_MS : PAUSE_MS;
   function finishHearing() {
     clearTimeout(pauseTimer);
-    const text = heard.trim(); heard = "";
-    if (recognizer && listening) recognizer.stop();
+    const text = (heard + " " + interimNow).trim(); heard = interimNow = "";
+    // abort, not stop: stop delivers the last words again, and they went out as a second broken message.
+    accepting = false;
+    const audio = text && status.voice && status.voice.enrolled ? takeAudio() : "";
+    if (recognizer && listening) recognizer.abort();
     $("text").placeholder = "Ask Jarvis anything";
-    if (text) send(text, status.voice && status.voice.enrolled ? takeAudio() : "");
+    if (!text) return;
+    if (isEcho(text)) { afterSpeaking(); return; }  // its own voice from the speakers, not you
+    send(text, audio);
+  }
+  function dropListening() {
+    clearTimeout(pauseTimer);
+    heard = interimNow = ""; accepting = false;
+    if (recognizer && listening) recognizer.abort();
   }
   if (SR) {
     recognizer = new SR();
@@ -875,22 +915,34 @@
     recognizer.interimResults = true;
     recognizer.continuous = true;
     recognizer.onresult = (e) => {
-      let interim = "";
+      if (!accepting) return;
+      let finals = "", interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) heard += " " + r[0].transcript; else interim += r[0].transcript;
+        const r = e.results[i], best = r[0];
+        if (!r.isFinal) { interim += best.transcript; continue; }
+        // One word the recogniser itself doubts is a noise, like a cough or a door, not a question.
+        if (wordsOf(best.transcript).length === 1 && best.confidence > 0 && best.confidence < 0.5 && !confirming) continue;
+        finals += " " + best.transcript;
       }
-      if (bargeMode && (heard + interim).trim().split(/\s+/).length >= 2 && (speechSynthesis.speaking || queue.length)) {
+      if (bargeMode && (speechSynthesis.speaking || queue.length)) {
+        const said = (heard + finals + " " + interim).trim();
+        if (isEcho(said)) { heard = interimNow = ""; return; }  // it hears itself: keep talking, keep nothing
+        if (wordsOf(said).length < 3) { heard += finals; interimNow = interim; return; }
+        bargeMode = false;  // a real voice: this is you now
         stopSpeaking(true);
       }
-      $("text").placeholder = (heard + " " + interim).trim() || "Listening…";
+      heard += finals; interimNow = interim;
+      const text = (heard + " " + interim).trim();
+      $("text").placeholder = text || "Listening…";
       clearTimeout(pauseTimer);
-      pauseTimer = setTimeout(finishHearing, PAUSE_MS);
+      pauseTimer = setTimeout(finishHearing, quietFor(text));
     };
     recognizer.onend = () => {
       listening = false; bargeMode = false;
-      if (heard.trim()) finishHearing();
+      if ((heard + interimNow).trim()) finishHearing();
+      accepting = false;
       closeMic(); $("text").placeholder = "Ask Jarvis anything"; render();
+      if (queue.length && !speechSynthesis.speaking) next();  // anything that waited for you to finish
     };
     recognizer.onerror = (e) => {
       listening = false; closeMic(); render();
@@ -904,13 +956,13 @@
     if (!recognizer) { note("This browser can't listen. Use Edge or Chrome, or type instead."); return; }
     if (listening) return;
     if (!barge) stopSpeaking(true);
-    bargeMode = barge; heard = "";
+    bargeMode = barge; heard = interimNow = ""; accepting = true;
     try { recognizer.start(); listening = true; if (!barge) openMic(Boolean(status.voice && status.voice.enrolled)); } catch {}
     render();
   }
   function stopListening() {
     clearTimeout(pauseTimer);
-    if (recognizer && listening) { if (heard.trim()) { finishHearing(); return; } recognizer.abort(); }
+    if (recognizer && listening) { if ((heard + interimNow).trim()) { finishHearing(); return; } accepting = false; recognizer.abort(); }
     listening = false; closeMic(); render();
   }
 
@@ -956,11 +1008,17 @@
   }
 
   let es = null;
-  function connect() {
+  let retry = 0;
+  function connect(claim = !document.hidden) {
     if (es) es.close();
-    es = new EventSource("/api/events?client=" + clientId);
+    clearTimeout(retry);
+    es = new EventSource("/api/events?client=" + clientId + (claim ? "&claim=1" : ""));
     es.onopen = () => { fetch("/api/status").then((r) => r.json()).then(showBrain).catch(() => {}); tellPresence(); };
-    es.onerror = () => { $("mode").dataset.kind = "off"; $("modeText").textContent = "Disconnected"; };
+    es.onerror = () => {
+      $("mode").dataset.kind = "off"; $("modeText").textContent = "Disconnected";
+      // Reconnect by hand, so a tab left in the background can't take over from the one you're using.
+      es.close(); clearTimeout(retry); retry = setTimeout(() => { if (active) connect(); }, 2000);
+    };
     es.onmessage = (m) => {
       const ev = JSON.parse(m.data);
       if (ev.type === "active") {
@@ -1229,11 +1287,12 @@
     el.append(yes, no); $("log").appendChild(el); scrollDown();
   }
   function standDown() {
-    active = false; stopSpeaking(false); stopListening();
+    active = false; stopSpeaking(false); dropListening(); stopListening();
     if (es) es.close();
+    clearTimeout(retry);
     $("elsewhere").classList.add("show");
   }
-  $("useHere").onclick = () => { active = true; $("elsewhere").classList.remove("show"); connect(); };
+  $("useHere").onclick = () => { active = true; $("elsewhere").classList.remove("show"); connect(true); };
 
   // ---------- wiring ----------
   $("mic").onclick = () => (listening ? stopListening() : startListening());
@@ -1509,7 +1568,7 @@
   setInterval(loadVitals, 4000);
   document.addEventListener("visibilitychange", loadVitals);
 
-  connect();
+  connect(true);
   render();
   loadVitals();
   loadHealth();

@@ -185,7 +185,7 @@ class Events:
 
     def __init__(self, base, client=""):
         self.items = []
-        self.resp = urllib.request.urlopen(base + "/api/events" + (f"?client={client}" if client else ""), timeout=10)
+        self.resp = urllib.request.urlopen(base + "/api/events" + (f"?client={client}&claim=1" if client else ""), timeout=10)
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
@@ -308,3 +308,39 @@ def test_busy_cloud_model_falls_back_to_the_next_cloud_model_before_local():
     llm = HybridLLM(Local(), Busy(), log=lambda m: None, backups=[Ok()])
     assert llm.chat_stream([{"role": "user", "content": "hi"}])["content"] == "Hi."
     assert llm.last_provider == "cloud"
+
+
+def test_a_tab_in_the_background_cant_take_over_when_it_reconnects():
+    from jarvis.server import EventHub
+
+    hub = EventHub()
+    front = hub.subscribe("front")
+    hub.join("front", front, claim=True)
+    back = hub.subscribe("back")
+    hub.join("back", back, claim=False)
+    assert hub.active == "front"
+    assert back.get_nowait() == {"type": "active", "client": "front"}  # told to stand down
+    hub.join("new", hub.subscribe("new"), claim=True)  # a page you've just opened does take over
+    assert hub.active == "new"
+
+
+def test_after_a_restart_the_first_tab_back_is_active_even_in_the_background():
+    from jarvis.server import EventHub
+
+    hub = EventHub()
+    hub.active = "gone"
+    hub.join("back", hub.subscribe("back"), claim=False)
+    assert hub.active == "back"
+
+
+def test_starting_jarvis_doesnt_open_another_page():
+    from types import SimpleNamespace
+
+    from jarvis.server import EventHub, open_page
+
+    opened = []
+    session = SimpleNamespace(hub=EventHub())
+    assert open_page(session, "http://localhost:8765", opened.append)
+    session.hub.subscribe("tab")
+    assert not open_page(session, "http://localhost:8765", opened.append)
+    assert opened == ["http://localhost:8765"]
