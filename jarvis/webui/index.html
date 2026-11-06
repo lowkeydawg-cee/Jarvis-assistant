@@ -70,7 +70,8 @@
   .mode[data-kind="cloud"] .dot { background: var(--accent); }
   .mode[data-kind="off"] .dot { background: var(--danger); }
   .spacer { flex: 1; }
-  .textbtn { color: var(--muted); font-size: 14px; padding: 6px 10px; border-radius: 8px; }
+  .textbtn { color: var(--muted); font-size: 14px; padding: 6px 10px; border-radius: 8px; text-decoration: none; }
+  .textbtn[hidden] { display: none; }
   .textbtn:hover { color: var(--text); background: var(--raised); }
 
   /* ---------- conversation ---------- */
@@ -496,6 +497,7 @@
     <span class="wordmark">Jarvis</span>
     <button class="mode" id="mode" data-kind="" title="Where Jarvis does its thinking"><span class="dot"></span><span id="modeText">Connecting</span></button>
     <div class="spacer"></div>
+    <a class="textbtn" id="tradingLink" href="http://localhost:8501/Approaches" target="_blank" rel="noopener" title="Opens the bot's dashboard. Start it with start-trading.bat in the pairs-bot folder." hidden>Trading</a>
     <button class="textbtn" id="statusBtn" aria-controls="rail"><span class="dot" id="statusDot"></span>Status</button>
     <button class="textbtn" id="settingsBtn">Settings</button>
   </div>
@@ -938,6 +940,7 @@
   function showBrain(s) {
     status = s; greet(); showVoiceSetup(); showWake();
     $("phoneField").hidden = !!s.remote;
+    $("tradingLink").hidden = s.remote || !(s.tools || []).some((t) => t.startsWith("trading__"));
     if (matchMedia("(pointer: coarse)").matches) $("howTo").textContent = "Tap the microphone and talk, or type below. A few things to try:";
     if (s.remote) document.querySelector('[aria-label="This computer"] h2').textContent = "Your laptop";
     if (s.reminders) loadReminders();
