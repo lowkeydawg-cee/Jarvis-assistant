@@ -98,3 +98,7 @@ def test_old_or_simulated_data_is_said_first():
 def test_trading_hint_never_calls_old_data_live():
     from jarvis.assistant import TRADING_HINT
     assert "NOT LIVE" in TRADING_HINT and "get_timing_report" in TRADING_HINT and "have live data" not in TRADING_HINT
+
+
+def test_a_one_line_timing_report_is_not_read_twice():
+    assert spoken("get_timing_report", "No trading data yet.") == "No trading data yet."
